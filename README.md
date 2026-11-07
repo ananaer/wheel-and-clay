@@ -6,6 +6,12 @@ A small, bilingual pottery studio in the browser. Public wheel-speed data from S
 
 Shape a vase, bowl, or cylinder; follow a target in open practice or a twenty-turn challenge; or repair a damaged pot within twelve turns. Choose a glaze and surface finish, save a keepsake locally, and download a PNG or open a sharing prompt. English and Chinese interfaces are available.
 
+## Interaction design
+
+The interface includes a playback-linked record control, a scroll transition into the studio, clear material selection, keyboard shaping and orbit controls, and confirmation before replacing an unfinished pot. Dialogs pause game-time consumption. Capture or local-storage failures leave the current piece available to retry.
+
+See the [69-item interaction review](INTERACTIONS.md) for references, options, implemented changes, browser observations and remaining device-specific checks.
+
 ## Run locally
 
 Use Python 3 and a modern browser with WebGL enabled. There are no npm dependencies, package installation steps, or build services required. Three.js is included in `vendor/`.
@@ -52,6 +58,7 @@ Each script prints its passing count and exits with a nonzero status on failure.
 - **LIVE** reads public hardware status from `https://api.squeekchain.com/v1/status` every eight seconds. The interface also reads public activity statistics to show recent evidence of movement. Requests omit credentials.
 - **SIM** provides labelled, local steady, sprint, and rest states. A piece that used simulation remains marked as simulated even if the player later switches to LIVE.
 - **Unknown is not zero.** Missing, stale, invalid, or non-hardware readings are shown as unknown. An unknown signal pauses shaping and challenge consumption; it is not treated as a resting hamster. A valid hardware zero is a distinct state, and the virtual pottery wheel coasts to rest.
+- **Hardware count is separate.** Connection details show the accepted work-event count within the reporting counter epoch and estimated device-day distance (the device day starts at 12:00 UTC). An accepted magnet passage is a work event, not proof of one complete animal-driven revolution.
 - **Game turns are virtual pottery-wheel credits.** They are calculated by integrating the smoothed virtual wheel speed over active game time. They are not a hardware revolution counter, a count of raw sensor pulses, or a physical measurement of the hamster's actual wheel. The shaping response and challenge budgets are game rules.
 
 The app is a public-data, read-only experience. It does not connect a wallet, request signatures, submit transactions, or control hardware. It is an interactive pottery studio, not a hamster video stream.

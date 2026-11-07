@@ -19,7 +19,8 @@ export function createOrders(hooks){
   studyRule:['没有圈数上限。跑轮停了就休息，满意时交付。','No turn limit. Rest when the wheel rests; deliver when you are ready.'],
   turnsRule:['20 圈用完自动定形。仓鼠跑得越快，可操作的时间越短；停稳后暂停消耗。','The shape sets after 20 turns. A faster hamster leaves less time; a resting wheel spends no turns.'],
   burstRule:['等它开跑。首次停跑并停稳后自动定形，也可提前交付；断线只会暂停。','Wait for a run. Its first settled stop sets your shape, or deliver early. Lost signals only pause the round.'],
-  repairRule:['从受损陶坯开始，用 12 圈修复一处。轮廓达 85%、完好区保留 90%，就能交付；停稳暂停。','Start with a damaged pot. Repair it in 12 turns: reach 85% shape match and preserve 90% of the intact area. Rest pauses the wheel.'],
+  repairRule:['从受损陶坯开始，用 12 圈修复一处。轮廓达 85%、完好区保留 90% 视为修复成功；可提前交付，停稳暂停。','Repair a damaged pot in 12 turns. Success needs 85% shape match and 90% intact area kept. You may deliver early; rest pauses the wheel.'],
+  replaceKicker:['开始新挑战','A new commission'],replaceTitle:['先安放这一件。','Keep this moment.'],replaceBody:['工作台上还有未收藏的作品。开始新挑战会替换它。','There is an uncollected piece on your wheel. Starting a new commission replaces it.'],continuePiece:['继续当前作品','Continue this piece'],replacePiece:['放弃并开始','Discard & start'],finishFirst:['先完成当前挑战','Finish my current challenge first'],close:['关闭','Close'],
   start:['开始这件 ↗','Start this piece ↗'],unsaved:['新一局会替换当前陶坯。','A new round replaces the piece on your wheel.'],keepFirst:['先收藏当前作品','Keep my current piece first'],
   remaining:['剩余动力','Turns left'],spent:['已用动力','Turns used'],unit:['圈','turns'],match:['轮廓吻合','Shape match'],exit:['返回自由创作','Back to free creation'],
   running:['按住轻推，朝金色轮廓慢慢成形。','Hold a gentle pull toward the gold outline.'],sprinting:['转盘正在加速，试着减轻施力。','The wheel is speeding up. Use a lighter touch.'],waiting:['等仓鼠开工。停稳期间不消耗圈数。','Waiting for the hamster. No turns spent at rest.'],
@@ -36,6 +37,21 @@ export function createOrders(hooks){
  };
  const t=key=>words[key]?.[hooks.lang()==='zh'?0:1]||key;
  let selected='cup',play='turns',state=null,lastLang='';
+ // 新挑战只有在明确选择后才替换未收藏作品；取消与 Esc 均保留原作。
+ const replaceDialog=document.createElement('dialog');replaceDialog.id='challenge-replace-dialog';replaceDialog.className='confirm-dialog';replaceDialog.setAttribute('aria-labelledby','challenge-replace-title');replaceDialog.setAttribute('aria-describedby','challenge-replace-body');
+ const replaceTop=document.createElement('div');replaceTop.className='dialog-top';
+ const replaceKicker=document.createElement('span'),replaceClose=document.createElement('button');replaceClose.type='button';replaceClose.className='close-button';replaceClose.textContent='×';
+ const replaceTitle=document.createElement('h2');replaceTitle.id='challenge-replace-title';
+ const replaceBody=document.createElement('p');replaceBody.id='challenge-replace-body';
+ const replaceActions=document.createElement('div');replaceActions.className='confirm-actions';
+ const continuePiece=document.createElement('button');continuePiece.type='button';continuePiece.className='primary-button';continuePiece.id='challenge-continue';continuePiece.autofocus=true;
+ const discardPiece=document.createElement('button');discardPiece.type='button';discardPiece.className='secondary-button';discardPiece.id='challenge-discard';
+ const keepPiece=document.createElement('button');keepPiece.type='button';keepPiece.className='text-button';keepPiece.id='challenge-keep-first';
+ replaceTop.append(replaceKicker,replaceClose);replaceActions.append(continuePiece,discardPiece);replaceDialog.append(replaceTop,replaceTitle,replaceBody,replaceActions,keepPiece);document.body.append(replaceDialog);
+ replaceClose.addEventListener('click',()=>replaceDialog.close());
+ continuePiece.addEventListener('click',()=>{replaceDialog.close();hooks.navigate('studio');$('scene').focus({preventScroll:true});});
+ discardPiece.addEventListener('click',()=>{replaceDialog.close();startSelected();});
+ keepPiece.addEventListener('click',()=>{replaceDialog.close();keepCurrent();});
  function repairCue(commission){const region=t('repair'+commission.region[0].toUpperCase()+commission.region.slice(1));return hooks.lang()==='zh'?region+(commission.direction==='narrow'?'鼓起，向内轻收。':'内陷，向外轻放。'):(commission.direction==='narrow'?'Bulging ':'Pinched ')+region+(commission.direction==='narrow'?'. Press gently inward.':'. Pull gently outward.');}
  function repairSummary(metrics){return `${t('repairProgress')} ${metrics.repair}% · ${t('repairPreserved')} ${metrics.preservation}%`;}
 
@@ -51,6 +67,11 @@ export function createOrders(hooks){
  }
  function open(){if($('order-result').open)$('order-result').close();render();hooks.navigate('orders');}
  function begin(){
+  if(!hooks.ready())return;
+  if(hooks.dirty()){render();if(!replaceDialog.open)replaceDialog.showModal();return;}
+  startSelected();
+ }
+ function startSelected(){
   if(!hooks.ready())return;
   if($('order-result').open)$('order-result').close();
   const repair=play==='repair'?P.repairCommission(selected):null;
@@ -68,13 +89,15 @@ export function createOrders(hooks){
   state=P.advanceRound(state,rpm,dt,hooks.signal().state);state.hadSim ||= hooks.mode()==='sim';
   if(state.reason)finish(state.reason);
  }
+ function keepCurrent(){hooks.navigate('studio');if(state?.status==='running')finish();else hooks.save();}
  function render(){
+  replaceKicker.textContent=t('replaceKicker');replaceTitle.textContent=t('replaceTitle');replaceBody.textContent=t('replaceBody');replaceClose.setAttribute('aria-label',t('close'));continuePiece.textContent=t('continuePiece');discardPiece.textContent=t('replacePiece');keepPiece.textContent=t(state?.status==='running'?'finishFirst':'keepFirst');discardPiece.disabled=!hooks.ready();
   if(lastLang!==hooks.lang()){lastLang=hooks.lang();document.querySelectorAll('[data-order-i18n]').forEach(e=>e.textContent=t(e.dataset.orderI18n));}
   document.querySelectorAll('[data-order]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.order===selected)));
   document.querySelectorAll('[data-play]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.play===play)));
   put('order-rules',t(play+'Rule'));put('selected-order-name',t(selected));put('selected-order-tip',play==='repair'?repairCue(P.repairCommission(selected)):t(selected+'Tip'));
   document.body.dataset.challenge=state?state.status:'free';$('open-order').disabled=!hooks.ready();$('start-order').disabled=!hooks.ready();$('order-hud').hidden=!state;document.querySelector('.intro-actions').hidden=!!state;$('new').hidden=!!state;
-  $('order-unsaved').hidden=!hooks.dirty();$('order-keep-first').hidden=!hooks.dirty();put('order-start-source',t(!hooks.ready()?'notReady':hooks.mode()==='sim'?'practiceNote':hooks.signal().state==='unknown'?'signalNote':'liveNote'));
+  $('order-unsaved').hidden=!hooks.dirty();$('order-keep-first').hidden=!hooks.dirty();put('order-keep-first',t(state?.status==='running'?'finishFirst':'keepFirst'));put('order-start-source',t(!hooks.ready()?'notReady':hooks.mode()==='sim'?'practiceNote':hooks.signal().state==='unknown'?'signalNote':'liveNote'));
   const heading=state?t(state.play+'Title'):hooks.headline(),lead=state?t(state.play==='repair'?'repairGoal':'goal')+t(state.id):hooks.lead();
   if(document.querySelector('.intro h1').textContent!==heading)document.querySelector('.intro h1').textContent=heading;
   if(document.querySelector('.intro .lead').textContent!==lead)document.querySelector('.intro .lead').textContent=lead;
@@ -100,7 +123,7 @@ export function createOrders(hooks){
  }
  document.querySelectorAll('[data-play]').forEach(b=>b.addEventListener('click',()=>{play=b.dataset.play;render();}));
  $('open-order').addEventListener('click',open);$('start-order').addEventListener('click',begin);
- $('order-keep-first').addEventListener('click',()=>{hooks.navigate('studio');if(state?.status==='running')finish();else hooks.save();});
+ $('order-keep-first').addEventListener('click',keepCurrent);
  $('exit-order').addEventListener('click',()=>{state=null;hooks.exit();render();});
  $('result-keep').addEventListener('click',()=>{$('order-result').close();$('save').focus({preventScroll:true});});
  $('result-again').addEventListener('click',open);
