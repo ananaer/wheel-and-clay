@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {SHARE_URL,buildShareCopy,buildXIntent,shareFileName,pngBytes} from '../share.js';
+import {SHARE_URL,buildShareCopy,buildXIntent,shareFileName,pngBytes,copyPngToClipboard} from '../share.js';
 let total=0;
 function check(name,test){test();total++;console.log(`PASS ${name}`);}
 const sample={hadSim:true,order:{play:'repair',score:96,hadSim:true},profile:[.9],id:123456789,apiSample:12345,image:'private image'};
@@ -40,5 +40,36 @@ check('仅接受实际 PNG 数据，拒绝远程内容和伪装文件',()=>{
  const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
  assert.equal(pngBytes(png)[0],137);assert.ok(pngBytes(png).length>32);
  for(const bad of ['https://example.com/image.png','data:text/html;base64,PHNjcmlwdD4=','data:image/png;base64,SGVsbG8=',png.replace('png','svg+xml'),null])assert.throws(()=>pngBytes(bad),TypeError);
+});
+async function checkAsync(name,test){await test();total++;console.log(`PASS ${name}`);}
+const clipboardPng='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=';
+class PNGItem{constructor(data){this.data=data;}static supports(type){return type==='image/png';}}
+await checkAsync('复制只写当前PNG图像，不向剪贴板写入链接或私有字段',async()=>{
+ let received;
+ await copyPngToClipboard(clipboardPng,{ClipboardItemCtor:PNGItem,clipboard:{write(items){received=items;return Promise.resolve();}}});
+ assert.equal(received.length,1);assert.deepEqual(Object.keys(received[0].data),['image/png']);
+ const image=received[0].data['image/png'];assert.equal(image.type,'image/png');
+ assert.deepEqual(new Uint8Array(await image.arrayBuffer()),pngBytes(clipboardPng));
+});
+await checkAsync('剪贴板写入在调用的同步阶段启动，保留用户点击激活',async()=>{
+ let invoked=false,finish;
+ const writing=copyPngToClipboard(clipboardPng,{ClipboardItemCtor:PNGItem,clipboard:{write(){invoked=true;return new Promise(resolve=>{finish=resolve;});}}});
+ assert.equal(invoked,true);finish();await writing;
+});
+await checkAsync('复制无效或远程图片时不触碰剪贴板',async()=>{
+ let writes=0;const environment={ClipboardItemCtor:PNGItem,clipboard:{write(){writes++;}}};
+ for(const bad of ['https://example.com/photo.png','data:image/png;base64,SGVsbG8=',null])await assert.rejects(copyPngToClipboard(bad,environment),TypeError);
+ assert.equal(writes,0);
+});
+await checkAsync('复制权限拒绝保留失败，不假报已复制',async()=>{
+ const denied=new DOMException('No clipboard permission','NotAllowedError');
+ await assert.rejects(copyPngToClipboard(clipboardPng,{ClipboardItemCtor:PNGItem,clipboard:{write(){return Promise.reject(denied);}}}),error=>error===denied);
+});
+await checkAsync('不支持PNG剪贴板时安全失败，未尝试非图片格式替代',async()=>{
+ let writes=0;
+ class UnsupportedItem{static supports(){return false;}}
+ await assert.rejects(copyPngToClipboard(clipboardPng,{ClipboardItemCtor:UnsupportedItem,clipboard:{write(){writes++;}}}),/unavailable/);
+ await assert.rejects(copyPngToClipboard(clipboardPng,{ClipboardItemCtor:PNGItem,clipboard:null}),/unavailable/);
+ assert.equal(writes,0);
 });
 console.log(`RESULT ${total}/${total}`);

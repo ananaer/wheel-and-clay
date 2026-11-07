@@ -83,7 +83,7 @@ This checks the bundled page and writes exactly `index.html`, `THREE-LICENSE.txt
 | `core.js`, `activity.js` | Public signal validation and activity evidence |
 | `engine.js`, `scene.js` | Pottery geometry, interaction, wheel dynamics, and WebGL rendering |
 | `orders.js`, `glazes.js` | Practice, challenges, repair commissions, and materials |
-| `audio.js` | Locally synthesized soundscape and wheel audio |
+| `audio.js` | Four original synthesized soundscapes, asynchronous PCM preparation, and wheel audio |
 | `home.js`, `home.css` | Welcome page |
 | `share.js`, `share.css` | Keepsake download and share controls |
 | `tests/` | Dependency-free Node.js checks |
@@ -92,3 +92,12 @@ This checks the bundled page and writes exactly `index.html`, `THREE-LICENSE.txt
 ## Third-party license
 
 The bundled Three.js distribution is covered by its MIT license in [`vendor/THREE-LICENSE.txt`](vendor/THREE-LICENSE.txt). Preserve that notice when distributing it. No project-wide license has been added for the original Wheel & Clay code; the Three.js license applies to Three.js itself.
+
+
+## Sound and sharing
+
+The record shelf offers four original arrangements: Wood & Light, Rain at the Window, Between the Seeds, and Moonlit Nest. A local Blob Worker prepares audio without blocking the interface; no audio files are downloaded. Selection preserves pause preferences and crossfades when playing. Hosts that add a Content Security Policy must permit `worker-src blob:`.
+
+On supported devices, **Share with image** passes the PNG, caption and public URL to the system share sheet. **Copy image** writes a PNG to the clipboard; the player can then paste it in X. The ordinary X compose link only prefills text and a URL, and cannot attach a local image. Available controls depend on browser support; download remains available. No automatic posting or media upload is performed.
+
+The homepage presents Squeektoshi and the player as co-creators, with a scroll-driven pottery camera and explicit live/simulated/unknown states. Camera movement is a material preview, not a claim that the hardware wheel is currently moving. The pottery remains a local creation, not an NFT or an on-chain asset.

@@ -2,11 +2,14 @@
 export const SHARE_URL='https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/';
 const shareWords={
  title:['分享这件作品','Share your piece'],
- download:['下载作品卡','Download card'],x:['分享到 X ↗','Share on X ↗'],native:['分享图片与链接…','Share image & link…'],
- instruction:['先下载作品卡，再到 X 附上图片。文案和试玩链接已准备好。','Download the card, then attach it on X. Your caption and play link are ready.'],
+ download:['下载作品卡','Download card'],x:['打开 X ↗','Open X ↗'],xCopied:['打开 X 并粘贴 ↗','Open X & paste ↗'],native:['带图分享…','Share with image…'],copy:['复制作品图','Copy image'],copying:['正在复制…','Copying…'],
+ instruction:['复制作品图，打开 X 后粘贴。文案和试玩链接已备好。','Copy the image, then paste it on X. Your caption and play link are ready.'],
+ downloadInstruction:['下载作品卡，在 X 附上图片。文案和试玩链接已备好。','Download the card and attach it on X. Your caption and play link are ready.'],
  downloaded:['图片下载已开始；到 X 附上这张作品卡。','Image download started. Attach the card to your post on X.'],
- xReady:['请在 X 附上下载的作品卡，再确认发布。','Attach your downloaded card on X, then confirm your post.'],
- nativeHint:['也可以用系统分享，把作品卡和试玩链接一起带走。','You can also share the card and play link together through your device.'],
+ xReady:['文案和链接已打开；请粘贴或附上作品图，再确认发布。','Your caption and link are ready. Paste or attach the image, then confirm your post.'],
+ copied:['图片已复制。在 X 编辑框粘贴，再确认发布。','Image copied. Paste it into the X composer, then confirm your post.'],
+ copyFailed:['未能复制图片；可下载作品卡，再到 X 附图。','Could not copy the image. Download the card and attach it on X.'],
+ nativeHint:['把作品图交给系统分享，再选择接收应用。','Share the image through your device and choose an app.'],
  sharing:['正在打开分享…','Opening share…'],shared:['已交给系统分享，请在所选应用中确认。','Handed to your device. Confirm in the app you choose.'],
  unavailable:['图片暂不可用，请重新打开这件作品。','The card is unavailable. Please open this piece again.'],
  failed:['系统分享暂不可用；仍可下载作品卡并打开 X。','Device sharing is unavailable. You can still download the card and open X.'],
@@ -42,49 +45,67 @@ export function pngBytes(dataUrl){
  return bytes;
 }
 
+/* 只写用户当前选中的本地 PNG；在点击的同步调用段内启动剪贴板写入。 */
+export async function copyPngToClipboard(dataUrl,{clipboard=globalThis.navigator?.clipboard,ClipboardItemCtor=globalThis.ClipboardItem}={}){
+ const bytes=pngBytes(dataUrl);
+ if(typeof clipboard?.write!=='function'||typeof ClipboardItemCtor!=='function'||(typeof ClipboardItemCtor.supports==='function'&&!ClipboardItemCtor.supports('image/png')))throw new Error('PNG clipboard is unavailable');
+ const item=new ClipboardItemCtor({'image/png':new Blob([bytes],{type:'image/png'})});
+ await clipboard.write([item]);
+}
+
 export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
  if(!root)throw new TypeError('Share controls need a root element');
  const label=key=>shareWords[key][shareLang(typeof lang==='function'?lang():lang)==='en'?1:0];
  const language=()=>shareLang(typeof lang==='function'?lang():lang);
- const doc=root.ownerDocument,nav=doc.defaultView?.navigator||navigator;
- let piece=null,file=null,objectUrl=null,busy=false,nativeSupported=false,status='',disposed=false,revision=0;
- const heading=doc.createElement('h3'),actions=doc.createElement('div'),download=doc.createElement('a'),x=doc.createElement('a'),native=doc.createElement('button'),instruction=doc.createElement('p'),feedback=doc.createElement('p');
- heading.className='share-title';actions.className='share-actions';download.className='share-download';x.className='share-x';native.className='share-native';instruction.className='share-instruction';feedback.className='share-feedback';
- x.target='_blank';x.rel='noopener noreferrer';native.type='button';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
- root.classList.add('share-tools');root.replaceChildren(heading,actions,instruction,feedback);actions.append(download,x,native);
+ const doc=root.ownerDocument,view=doc.defaultView||globalThis,nav=view.navigator||navigator,dialog=root.closest('dialog');
+ let piece=null,file=null,objectUrl=null,busy='',nativeSupported=false,copySupported=false,copied=false,status='',disposed=false,revision=0;
+ const heading=doc.createElement('h3'),actions=doc.createElement('div'),download=doc.createElement('a'),x=doc.createElement('a'),native=doc.createElement('button'),copy=doc.createElement('button'),instruction=doc.createElement('p'),feedback=doc.createElement('p');
+ heading.className='share-title';actions.className='share-actions';download.className='share-download';x.className='share-x';native.className='share-native';copy.className='share-copy';instruction.className='share-instruction';feedback.className='share-feedback';
+ x.target='_blank';x.rel='noopener noreferrer';native.type=copy.type='button';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
+ root.classList.add('share-tools');root.replaceChildren(heading,actions,instruction,feedback);actions.append(native,copy,x,download);
  function updateStatus(key,announce=false){status=key;render();if(announce)notify(label(key));}
- function release(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=null;file=null;nativeSupported=false;}
+ function release(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=null;file=null;nativeSupported=copySupported=false;}
  function render(){
   if(disposed)return;
-  heading.textContent=label('title');download.textContent=label('download');x.textContent=label('x');native.textContent=label(busy?'sharing':'native');
-  instruction.textContent=label('instruction');feedback.textContent=status?label(status):'';feedback.hidden=!status;
-  root.dataset.shareReady=String(!!file);root.dataset.nativeShare=String(nativeSupported);root.setAttribute('aria-label',label('title'));
+  heading.textContent=label('title');download.textContent=label('download');x.textContent=label(copied?'xCopied':'x');native.textContent=label(busy==='native'?'sharing':'native');copy.textContent=label(busy==='copy'?'copying':'copy');
+  instruction.textContent=label(nativeSupported?'nativeHint':copySupported?'instruction':'downloadInstruction');feedback.textContent=status?label(status):'';feedback.hidden=!status;
+  root.dataset.shareReady=String(!!file);root.dataset.nativeShare=String(nativeSupported);root.dataset.copyShare=String(copySupported);root.dataset.copied=String(copied);root.dataset.shareStatus=status;root.setAttribute('aria-label',label('title'));root.setAttribute('aria-busy',String(!!busy));
   for(const link of [download,x]){link.setAttribute('aria-disabled',String(!file||busy));link.tabIndex=file&&!busy?0:-1;}
-  native.hidden=!nativeSupported;native.disabled=busy||!file;
+  native.hidden=!nativeSupported;native.disabled=!!busy||!file;copy.hidden=!copySupported;copy.disabled=!!busy||!file;
   if(file){download.href=objectUrl;download.download=file.name;x.href=buildXIntent(piece.record,language());}
   else{download.removeAttribute('href');x.removeAttribute('href');download.removeAttribute('download');}
  }
  function setPiece(next){
-  revision++;release();piece=null;status='';busy=false;
+  revision++;release();piece=null;status='';busy='';copied=false;
   try{
    if(!next?.record)throw new TypeError('Missing piece');
    const record={hadSim:next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null};
-   file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record};
+   file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record,dataUrl:next.dataUrl};
    try{nativeSupported=typeof nav.share==='function'&&typeof nav.canShare==='function'&&nav.canShare({files:[file]});}catch{nativeSupported=false;}
+   try{copySupported=typeof nav.clipboard?.write==='function'&&typeof view.ClipboardItem==='function'&&(typeof view.ClipboardItem.supports!=='function'||view.ClipboardItem.supports('image/png'));}catch{copySupported=false;}
   }catch{release();status='unavailable';}
   render();return !!file;
  }
  function downloadClick(event){if(!file||busy){event.preventDefault();return;}updateStatus('downloaded');}
- function xClick(event){if(!file||busy){event.preventDefault();return;}updateStatus('xReady');}
+ function xClick(event){if(!file||busy){event.preventDefault();return;}updateStatus(copied?'copied':'xReady');}
+ async function copyClick(){
+  if(!file||busy||!copySupported)return;
+  const current=revision;busy='copy';status='';render();
+  try{await copyPngToClipboard(piece.dataUrl,{clipboard:nav.clipboard,ClipboardItemCtor:view.ClipboardItem});if(!disposed&&current===revision){copied=true;updateStatus('copied');}}
+  catch{if(!disposed&&current===revision){copied=false;updateStatus('copyFailed');}}
+  finally{if(current===revision){busy='';if(!disposed)render();}}
+ }
  async function nativeClick(){
   if(!file||busy||!nativeSupported)return;
   const payload={files:[file],title:language()==='en'?'My Wheel & Clay piece':'我的轮间作品',text:buildShareCopy(piece.record,language()),url:SHARE_URL};
-  const current=revision;busy=true;status='';render();
+  const current=revision;busy='native';status='';render();
   try{await nav.share(payload);if(!disposed&&current===revision)updateStatus('shared');}
   catch(error){if(!disposed&&current===revision&&error?.name!=='AbortError')updateStatus('failed');}
-  finally{if(current===revision){busy=false;if(!disposed)render();}}
+  finally{if(current===revision){busy='';if(!disposed)render();}}
  }
- download.addEventListener('click',downloadClick);x.addEventListener('click',xClick);native.addEventListener('click',nativeClick);
+ // 关闭作品卡后，旧的权限/系统分享结果不能写回下一次打开的卡片。
+ function invalidatePending(){revision++;busy='';status='';copied=false;render();}
+ download.addEventListener('click',downloadClick);x.addEventListener('click',xClick);native.addEventListener('click',nativeClick);copy.addEventListener('click',copyClick);dialog?.addEventListener('close',invalidatePending);
  render();
- return {setPiece,render,clear(){revision++;release();piece=null;status='';busy=false;render();},dispose(){disposed=true;release();download.removeEventListener('click',downloadClick);x.removeEventListener('click',xClick);native.removeEventListener('click',nativeClick);}};
+ return {setPiece,render,clear(){revision++;release();piece=null;status='';busy='';copied=false;render();},dispose(){disposed=true;revision++;release();download.removeEventListener('click',downloadClick);x.removeEventListener('click',xClick);native.removeEventListener('click',nativeClick);copy.removeEventListener('click',copyClick);dialog?.removeEventListener('close',invalidatePending);}};
 }
