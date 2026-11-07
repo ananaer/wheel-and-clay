@@ -166,6 +166,23 @@ check('展示缩放忽略非法值、钳制范围并合并重绘，不改变几�
  scene.setPresentationScale(-5);step();assert.ok(Math.abs(r.camera.x/Math.sin(.28)-7.5/.85)<1e-10);
  scene.setPresentationScale(1.12);scene.setPresentationScale(1.15);assert.equal(frames.size,1);step();assert.ok(Math.abs(r.camera.x/Math.sin(.28)-7.5/1.15)<1e-10);assert.equal(pot.geometry.attributes.position.version,positionVersion);assert.equal(r.shadows,shadows);scene.dispose();
 });
+check('动态展示高度仅缩放器物且固定底面，钳制有限输入并只在变化时刷新阴影',()=>{
+ const node=canvas(),scene=createStudio(node,{animatedPreview:true}),r=renderers.at(-1);step();const pot=renderedPot(r),geometry=pot.geometry,positions=geometry.attributes.position,version=positions.version,before=positions.array.slice(),height=Pottery.HEIGHT,middle=node.dataset.middleRadius,geometries=[];
+ r.world.traverse(object=>{if(object.geometry)geometries.push(object.geometry);});const bottom=()=>pot.localToWorld(new Three.Vector3(0,geometry.boundingBox.min.y,0)).y,bottomBefore=bottom(),shadows=r.shadows;
+ assert.equal(node.dataset.presentationHeight,'1.0000');for(const value of [1,NaN,Infinity,-Infinity,undefined,null,'0.8',true])scene.setPresentationHeight(value);step();assert.equal(pot.scale.y,1);assert.equal(r.shadows,shadows);
+ scene.setPresentationHeight(-4);assert.equal(pot.scale.y,.65);assert.equal(node.dataset.presentationHeight,'0.6500');assert.equal(bottom(),bottomBefore);step();assert.equal(r.shadows,shadows+1);
+ scene.setPresentationHeight(-1);step();assert.equal(r.shadows,shadows+1);
+ scene.setPresentationHeight(4);assert.equal(pot.scale.y,1.15);assert.equal(node.dataset.presentationHeight,'1.1500');scene.setPresentationHeight(.92);scene.setPresentationHeight(.86);assert.equal(frames.size,1);step();assert.equal(r.shadows,shadows+2);assert.equal(bottom(),bottomBefore);
+ const afterGeometries=[];r.world.traverse(object=>{if(object.geometry)afterGeometries.push(object.geometry);});assert.deepEqual(afterGeometries,geometries);assert.equal(pot.geometry,geometry);assert.equal(positions.version,version);assert.deepEqual(positions.array,before);assert.equal(Pottery.HEIGHT,height);assert.equal(node.dataset.middleRadius,middle);
+ node.toDataURL=()=>{assert.equal(pot.scale.y,.86);return 'data:image/png;base64,height';};assert.equal(scene.capture(),'data:image/png;base64,height');assert.equal(pot.scale.y,.86);assert.equal(node.dataset.presentationHeight,'0.8600');assert.equal(bottom(),bottomBefore);scene.dispose();
+});
+check('工作台及静态预览忽略展示高度，不改变游戏器形或唤醒静态画布',()=>{
+ for(const options of [{},{presentationOnly:true}]){
+  const node=canvas(),scene=createStudio(node,options),r=renderers.at(-1);step();const pot=renderedPot(r),shadows=r.shadows,version=pot.geometry.attributes.position.version;
+  scene.setPresentationHeight(.7);scene.setPresentationHeight(1.15);assert.equal(pot.scale.y,1);assert.equal(node.dataset.presentationHeight,'1.0000');assert.equal(pot.geometry.attributes.position.version,version);
+  if(options.presentationOnly)assert.equal(frames.size,0);else step();assert.equal(r.shadows,shadows);scene.dispose();
+ }
+});
 check('首页入场尊重展示缩放，截图成功或失败后恢复缩放并继续原有入场',()=>{
  window.matchMedia=()=>({matches:false});const node=canvas(),scene=createStudio(node,{animatedPreview:true,presentationEntrance:true,heroReveal:true}),r=renderers.at(-1);
  scene.setPhase('glaze');scene.setGlazeReveal(.28);scene.setPresentationScale(1.2);scene.setPresentationView(.65,.18);step();const firstDistance=r.camera.x/Math.sin(.65),before=r.camera.clone();assert.ok(firstDistance>7.5/1.2&&firstDistance<7.8/1.2);
@@ -175,6 +192,33 @@ check('首页入场尊重展示缩放，截图成功或失败后恢复缩放并�
 });
 
 const laserOptions={animatedPreview:true,heroLaser:true,sealUrl:'fixture:official-seal'};
+check('流釉工序只在显式开启的刻印首页显影中生效，其他显影方向和缓存保持隔离',()=>{
+ const enabled={...laserOptions,heroReveal:true,heroCraft:true};
+ for(const options of [{heroCraft:true,heroReveal:true,heroLaser:true,sealUrl:'fixture:seal'},{animatedPreview:true,heroCraft:true,heroReveal:true},{animatedPreview:true,heroCraft:true,heroReveal:true,heroLaser:true},{...laserOptions,heroReveal:true},{...laserOptions,heroCraft:true},enabled]){
+  const scene=createStudio(canvas(),options),r=renderers.at(-1);step();assert.ok(!potteryShader(renderedPot(r).material).fragmentShader.includes('float revealFlow='));scene.setPhase('glaze');step();const material=renderedPot(r).material,fragment=potteryShader(material).fragmentShader,craft=options===enabled;
+  assert.equal(fragment.includes('float revealFlow='),craft);assert.equal(material.customProgramCacheKey().includes('hero-reveal-craft'),craft);
+  if(options.animatedPreview&&options.heroReveal&&!craft)assert.ok(fragment.includes('float glazeFront=mix(-0.07,1.11,potteryGlazeReveal)'));
+  scene.dispose();
+ }
+});
+check('流釉从口向下推进且长短不齐，端点精确覆盖内外壁，初始素坯没有提前刻印',()=>{
+ const node=canvas(),scene=createStudio(node,{...laserOptions,heroReveal:true,heroCraft:true}),r=renderers.at(-1);scene.setPhase('glaze');scene.setGlaze('turquoise');scene.setSurface('flow');scene.setGlazeReveal(0);scene.setLaserEngraving(0,false);step();const pot=renderedPot(r),shader=potteryShader(pot.material),fragment=shader.fragmentShader;
+ assert.equal(shader.uniforms.potteryGlazeReveal.value,0);assert.equal(shader.uniforms.potteryLaserProgress.value,0);assert.equal(shader.uniforms.potteryLaserActive.value,0);assert.equal(shader.uniforms.potterySurface.value,3);assert.ok(pot.material.color.equals(new Three.Color('#176f81')));assert.ok(shader.uniforms.potteryAccent.value.equals(new Three.Color('#a4dfd6')));
+ assert.ok(fragment.indexOf('stamp*=engraved;')<fragment.indexOf('unglazedColor=mix'));assert.ok(fragment.includes('potteryLaserProgress<=0.0?0.0:'));assert.ok(fragment.includes('roughnessFactor=mix(0.5*(1.0+clayFlow*0.18),roughnessFactor,glazeCoverage);'));assert.ok(fragment.includes('material.clearcoat=mix(0.18,material.clearcoat,glazeCoverage);'));
+ // 直接计算生成的 GLSL 标量段，验证实际遮罩公式，不复制一份流釉实现。
+ const declarations=fragment.slice(fragment.indexOf('float revealFlow='),fragment.indexOf('vec3 unglazedColor=')).replace(/\bfloat\b/g,'const');
+ const scalarShader=new Function('potteryGlazeReveal','potteryY','theta','sin','pow','max','mix','smoothstep',declarations+'return {front:glazeFront,coverage:glazeCoverage};');
+ const smoothstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+ const sample=(progress,y,theta=0)=>scalarShader(progress,y,theta,Math.sin,Math.pow,Math.max,(a,b,t)=>a+(b-a)*t,smoothstep),fronts=[];
+ for(let i=0;i<72;i++){
+  const theta=i/72*Math.PI*2;fronts.push(sample(.5,.5,theta).front);assert.equal(sample(.5,.95,theta).coverage,1);assert.equal(sample(.5,.05,theta).coverage,0);
+  for(const y of [0,.05,.2,.4,.6,.8,1,1.028]){
+   assert.equal(sample(0,y,theta).coverage,0);assert.equal(sample(.0001,y,theta).coverage,0);assert.equal(sample(1,y,theta).coverage,1);assert.equal(sample(.9999,y,theta).coverage,1);
+   let previous=0;for(let p=1;p<=100;p++){const coverage=sample(p/100,y,theta).coverage;assert.ok(coverage>=previous-1e-12,'glaze must not recede while pouring');previous=coverage;}
+  }
+ }
+ assert.ok(Math.max(...fronts)-Math.min(...fronts)>.19);assert.ok(Math.abs(sample(.5,.5,0).front-sample(.5,.5,Math.PI*2).front)<1e-12);scene.dispose();
+});
 check('激光仅供明确开启且有官方印章的动态首页，默认刻印完整且不发光',()=>{
  for(const options of [{heroLaser:true,sealUrl:'fixture:seal'},{animatedPreview:true,heroLaser:true},{animatedPreview:true,sealUrl:'fixture:seal'},{presentationOnly:true,heroLaser:true,sealUrl:'fixture:seal'},laserOptions]){
   const node=canvas(),scene=createStudio(node,options),r=renderers.at(-1);step();assert.equal(potteryShader(renderedPot(r).material).uniforms.potteryLaserProgress,undefined);scene.setPhase('glaze');step();const material=renderedPot(r).material,shader=potteryShader(material),enabled=options===laserOptions;

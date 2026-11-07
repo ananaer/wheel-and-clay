@@ -3,7 +3,7 @@ import {getGlaze,getSurface,materialFor} from './glazes.js';
 
 /* 真正的可编辑旋转体，不使用预渲染器物图片。 */
 export function createStudio(canvas,callbacks={}){
- const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true,heroLaser=animatedPreview&&callbacks.heroLaser===true&&!!callbacks.sealUrl;
+ const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true,heroLaser=animatedPreview&&callbacks.heroLaser===true&&!!callbacks.sealUrl,heroCraft=heroLaser&&callbacks.heroCraft===true;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:callbacks.transparentBackground===true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
  // 固定光源下的旋转体轮廓基本不变；重塑时再刷新阴影，避免每帧重复阴影通道。
@@ -117,8 +117,8 @@ export function createStudio(canvas,callbacks={}){
    }
    if(potterySurface>2.5){
     // 第二层釉从口沿向下流，长短不同的垂釉不会变成环形贴图。
-    float longDrip=pow(max(0.0,sin(theta*3.0+0.8)),14.0);
-    float shortDrip=pow(max(0.0,sin(theta*7.0-0.6)),10.0);
+    float longDrip=pow(max(0.0,sin(theta*3.0+${heroCraft?'3.1':'0.8'})),14.0);
+    float shortDrip=pow(max(0.0,sin(theta*7.0+${heroCraft?'1.4':'-0.6'})),10.0);
     float edgeHeight=0.62+sin(theta*5.0)*0.025-longDrip*0.19-shortDrip*0.07;
     float topGlaze=smoothstep(edgeHeight-0.014,edgeHeight+0.025,potteryY);
     glazeEdge=1.0-smoothstep(0.0,0.025,abs(potteryY-edgeHeight));
@@ -161,9 +161,16 @@ export function createStudio(canvas,callbacks={}){
    float laserWarmHalo=exp(-pow(laserHeadDistance/5.5,2.0));
    `:`diffuseColor.rgb=mix(diffuseColor.rgb,${glazed?'vec3(0.46,0.34,0.18)':'diffuseColor.rgb*0.48'},stamp*${glazed?'0.82':'0.60'});`}
    ${revealEnabled?`
+   ${heroCraft?`
+   // 从口沿下行的流釉前沿；长短垂釉随进度生长再收拢，首尾均越过完整内外壁。
+   float revealFlow=sin(potteryGlazeReveal*3.1415927);
+   float revealLongDrip=pow(max(0.0,sin(theta*3.0+3.1)),14.0);
+   float revealShortDrip=pow(max(0.0,sin(theta*7.0+1.4)),10.0);
+   float glazeFront=mix(1.10,-0.08,potteryGlazeReveal)+revealFlow*(sin(theta*5.0)*0.012-revealLongDrip*0.20-revealShortDrip*0.075);
+   float glazeCoverage=potteryGlazeReveal>=1.0?1.0:(potteryGlazeReveal<=0.0?0.0:smoothstep(glazeFront-0.025,glazeFront+0.025,potteryY));`:`
    // 釉线在局部坐标里微曲，随器物一起旋转；边界越过整段内外壁后精确恢复原釉面。
    float glazeFront=mix(-0.07,1.11,potteryGlazeReveal)+sin(theta*2.0+0.4)*0.018+sin(theta*5.0-potteryY*2.0)*0.009;
-   float glazeCoverage=potteryGlazeReveal>=1.0?1.0:(potteryGlazeReveal<=0.0?0.0:1.0-smoothstep(glazeFront-0.025,glazeFront+0.025,potteryY));
+   float glazeCoverage=potteryGlazeReveal>=1.0?1.0:(potteryGlazeReveal<=0.0?0.0:1.0-smoothstep(glazeFront-0.025,glazeFront+0.025,potteryY));`}
    vec3 unglazedColor=potteryClayColor*(1.0+clayFlow*0.085);
    unglazedColor=mix(unglazedColor,unglazedColor*0.48,stamp*0.60);
    diffuseColor.rgb=mix(unglazedColor,diffuseColor.rgb,glazeCoverage);`:''}
@@ -191,7 +198,7 @@ export function createStudio(canvas,callbacks={}){
     material.clearcoat=mix(material.clearcoat,0.14,stamp${revealEnabled?'*glazeCoverage':''});
    #endif
   `);
- };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?'-hero-reveal-v1':'')+(laserEnabled?'-hero-laser-v1':'');}
+ };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?heroCraft?'-hero-reveal-craft-v1':'-hero-reveal-v1':'')+(laserEnabled?'-hero-laser-v1':'');}
  turningSurface(clay,false);turningSurface(ceramic,true);
  // 小幅首页预览减少圆周细分；纵向塑形精度与工作台网格保持不变。
  const SEG=animatedPreview?96:144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
@@ -200,6 +207,7 @@ export function createStudio(canvas,callbacks={}){
  for(let row=0;row<RINGS;row++)for(let j=0;j<=SEG;j++){const at=row*(SEG+1)+j;uv[at*2]=j/SEG;uv[at*2+1]=row/(RINGS-1);if(row<RINGS-1&&j<SEG){const next=at+SEG+1;indices.push(at,at+1,next,next,at+1,next+1);}}
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));geometry.setIndex(indices);
  const pot=mesh(geometry,clay,rotor,[0,.51,0]);
+ canvas.dataset.presentationHeight='1.0000';
  let targetActive=false;
  const targetGuide=new THREE.LineSegments(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({color:'#866130',dashSize:.04,gapSize:.03,transparent:true,opacity:.95,depthTest:false,toneMapped:false}));targetGuide.visible=false;targetGuide.renderOrder=6;scene.add(targetGuide);
  function setTarget(profile){invalidate();targetActive=!!profile;targetGuide.visible=targetActive&&phase==='shape';if(!profile)return;const points=[];for(const sign of [-1,1])for(const offset of [-.004,0,.004])for(let i=0;i<P.COUNT-1;i++){points.push(new THREE.Vector3(sign*profile[i]+offset,.555+i/(P.COUNT-1)*P.HEIGHT,0),new THREE.Vector3(sign*profile[i+1]+offset,.555+(i+1)/(P.COUNT-1)*P.HEIGHT,0));}targetGuide.geometry.dispose();targetGuide.geometry=new THREE.BufferGeometry().setFromPoints(points);targetGuide.computeLineDistances();}
@@ -280,6 +288,8 @@ export function createStudio(canvas,callbacks={}){
   setTarget,setPhase(next){up();pendingHover=null;phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
   setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
   setPresentationScale(value){if(!Number.isFinite(value))return;const next=P.clamp(value,.85,1.25);if(next===presentationScale)return;presentationScale=next;baseCameraDistance=7.5/next;cameraDistance=baseCameraDistance*(entranceTime<entranceDuration?1+.04*(1-entranceTime/entranceDuration)**3:1);setCamera();},
+  // 器物局部原点在底面：只缩放高度即可保持贴盘，不改真实轮廓、几何或游戏高度。
+  setPresentationHeight(value){if(!animatedPreview||!Number.isFinite(value))return;const next=P.clamp(value,.65,1.15);if(next===pot.scale.y)return;pot.scale.y=next;canvas.dataset.presentationHeight=next.toFixed(4);invalidate(true);},
   get presentationAngle(){return rotor.rotation.y;},
   setPresentationRotation(value){if(!animatedPreview||(value!==null&&!Number.isFinite(value)))return;if(value===null){if(presentationRotation===null)return;presentationOffset=rotor.rotation.y-angle;presentationRotation=null;}else{if(presentationRotation===value)return;presentationRotation=value;}updatePresentationRotation();invalidate();},
   setGlazeReveal(value){if(!heroReveal||!Number.isFinite(value))return;const next=P.clamp(value,0,1);if(next===glazeReveal.value)return;glazeReveal.value=next;canvas.dataset.glazeReveal=next.toFixed(4);invalidate();},
