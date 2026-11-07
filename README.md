@@ -4,7 +4,7 @@
 
 自由创作、九种器形和三种挑战共用同一个可编辑的三维转盘。16 种釉色与 4 种表面工艺可以自由组合，完成后留下本机作品卡。默认英文与孔雀蓝配色，界面可完整切换中文；主动选择的语言和伙伴在本机保留。无需钱包或登录。
 
-桌面首页以“HE RUNS. / YOU CREATE.”、官方点阵仓鼠与单件真实三维陶器构成动态海报。素陶随跑轮动力从底部逐渐显出青釉；停止动力会暂停显影，可以重播。底部直接选择实时／模拟和跑动／休息。向下进入 Squeeks 共创区，选择三位官方 Sepolia 样例角色之一；角色配色进入实际作品，塑形保持不变，角色身份随收藏和作品卡保存。物料来源见 `BRAND-ASSETS.md`。
+桌面首页以“HE RUNS. / YOU CREATE.”、官方点阵仓鼠与单件真实三维陶器构成动态海报。首页先短暂定位，以40行高速蛇形扫描在陶器曲面上逐步留下官方仓鼠金印；标准模拟速度约1.8秒完成刻印，短暂停留后恢复转动。停止动力立即熄光并保留刻痕，再开工从原处继续；可手动重新刻印。底部直接选择实时／模拟和跑动／休息。向下进入 Squeeks 共创区，选择三位官方 Sepolia 样例角色之一；角色配色进入实际作品，塑形保持不变，角色身份随收藏和作品卡保存。物料来源见 `BRAND-ASSETS.md`。
 
 这里的“共创角色”是所选样例的配色灵感与 ID，不表示持有该 NFT。陶器、成绩和作品卡保存在本机，不铸造 NFT、不写入链上，也不代表 Squeekchain 官方出品或背书。
 
@@ -54,7 +54,7 @@
 
 Three.js 实时旋转体使用 129 个纵向控制点和 144 个圆周分段，包含内壁、圆唇和闭合底部。材质、摄影棚反射、金属转盘和接触阴影实时渲染，没有器物背景图或预渲染状态图。转盘刻度和金色零位转动，固定黄铜指针及器物上的官方仓鼠轮廓窑印帮助辨认速度与停止；金色窑印是本项目的视觉延展。
 
-`engine.js` 提供可离线测试的形变、动力、修坯判定与撤销规则；`glazes.js` 定义 16 种釉色和 4 种工艺；`core.js` 归一化接口。Three.js 使用既有本地副本，许可证保留在 `vendor/THREE-LICENSE.txt`，没有新增安装依赖。
+`engraving.js` 提供对正、扫描、成品停留的纯时序；首页的扫描光、金属刻痕均在实际曲面材质中渲染，未知动力不推进，减少动态效果偏好直接显示完整印章。`engine.js` 提供可离线测试的形变、动力、修坯判定与撤销规则；`glazes.js` 定义 16 种釉色和 4 种工艺；`core.js` 归一化接口。Three.js 使用既有本地副本，许可证保留在 `vendor/THREE-LICENSE.txt`，没有新增安装依赖。
 
 ```sh
 node tests/test_engine.cjs
@@ -65,6 +65,7 @@ node tests/test_companions.mjs
 node tests/test_preview_rendering.mjs
 node tests/test_motion.mjs
 node tests/test_opening.mjs
+node tests/test_engraving.mjs
 node --check app.js
 node --check scene.js
 node --check orders.js

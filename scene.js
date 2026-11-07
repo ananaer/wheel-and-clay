@@ -3,7 +3,7 @@ import {getGlaze,getSurface,materialFor} from './glazes.js';
 
 /* 真正的可编辑旋转体，不使用预渲染器物图片。 */
 export function createStudio(canvas,callbacks={}){
- const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true;
+ const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true,heroLaser=animatedPreview&&callbacks.heroLaser===true&&!!callbacks.sealUrl;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:callbacks.transparentBackground===true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
  // 固定光源下的旋转体轮廓基本不变；重塑时再刷新阴影，避免每帧重复阴影通道。
@@ -13,6 +13,7 @@ export function createStudio(canvas,callbacks={}){
  const entranceDuration=animatedPreview&&callbacks.presentationEntrance===true&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?1:0;
  let entranceTime=0,presentationScale=1,baseCameraDistance=7.5,cameraDistance=baseCameraDistance*(entranceDuration?1.04:1);
  let values=P.profile(),kind='vase',phase='shape',glaze='jade',surface='glossy',finish=.72,rpm=0,targetRpm=18,angle=0,drag=null,orbit=.28,tilt=.24,visible=true,disposed=false,frame=0,elapsed=0,changed=true,hoverHeight=.55,brushRadius=.13;
+ let presentationRotation=null,presentationOffset=0;
  // 静态预览按需绘制；动态首页与工作台保留连续物理时钟。
  function invalidate(shadow=false){needsRender=true;needsShadow ||= shadow;if(presentationOnly&&sceneReady&&visible&&!disposed&&!drawing&&!frame)frame=requestAnimationFrame(draw);}
  const H=()=>kind==='bowl'?1.78:P.HEIGHT;
@@ -22,9 +23,10 @@ export function createStudio(canvas,callbacks={}){
  function softbox(p,s,color,power){const m=new THREE.Mesh(new THREE.PlaneGeometry(...s),new THREE.MeshBasicMaterial({color:new THREE.Color(color).multiplyScalar(power),side:THREE.DoubleSide}));m.position.set(...p);m.lookAt(0,1,0);room.add(m);}
  // 首页用一主一辅的竖向反光保留釉色，工作台与其他预览保持既有灯光。
  const heroLighting=animatedPreview&&callbacks.heroLighting===true;
- softbox([-4,5,4],heroLighting?[1,6.5]:[3,7],'#fff3dd',heroLighting?3.5:5);
- softbox([5,4,2],heroLighting?[.5,5.5]:[1.4,6],'#eff9ff',heroLighting?1.8:4);
- softbox([0,7,-1],heroLighting?[3,.8]:[6,3],'#ffffff',heroLighting?1:3);
+ // 刻印首页略收敛瓶肩固定条灯，保留真实扫描头的局部亮度层级。
+ softbox([-4,5,4],heroLighting?[1,6.5]:[3,7],'#fff3dd',heroLaser?2.6:heroLighting?3.5:5);
+ softbox([5,4,2],heroLighting?[.5,5.5]:[1.4,6],'#eff9ff',heroLaser?1.4:heroLighting?1.8:4);
+ softbox([0,7,-1],heroLighting?[3,.8]:[6,3],'#ffffff',heroLaser?.8:heroLighting?1:3);
  softbox([-4,2,-4],[2,5],'#d5e6de',2);softbox([3,1,-5],[1,5],'#d7d0bb',2);
  const pmrem=new THREE.PMREMGenerator(renderer),env=pmrem.fromScene(room,.025);scene.environment=env.texture;pmrem.dispose();
  scene.add(new THREE.HemisphereLight('#fff8eb','#879182',1.1));
@@ -40,6 +42,8 @@ export function createStudio(canvas,callbacks={}){
  lathe([[0,.32],[1.20,.32],[1.25,.34],[1.26,.38],[1.23,.42],[0,.42]],chrome);
  lathe([[1.21,.20],[1.224,.20],[1.224,.245],[1.21,.245]],brass);
  const rotor=new THREE.Group();body.add(rotor);
+ function updatePresentationRotation(){rotor.rotation.y=animatedPreview?(presentationRotation??angle+presentationOffset):angle;canvas.dataset.presentationAngle=rotor.rotation.y.toFixed(5);}
+ updatePresentationRotation();
  lathe([[0,.41],[1.30,.41],[1.355,.435],[1.355,.47],[1.33,.49],[0,.49]],chrome,rotor);
  // 刻度直接贴在盘面，避免细小悬浮几何的闪烁。唯一的金色零位随真实转角运动。
  const dialCanvas=document.createElement('canvas');dialCanvas.width=dialCanvas.height=1024;
@@ -76,13 +80,16 @@ export function createStudio(canvas,callbacks={}){
  const heroReveal=animatedPreview&&callbacks.heroReveal===true,glazeReveal={value:1};canvas.dataset.glazeReveal='1.0000';
  // 品牌概念可指定原始透明 SVG 为窑印；不传时保留工作台现有爪印。
  const brandSeal=callbacks.sealUrl?new THREE.TextureLoader().load(callbacks.sealUrl,()=>invalidate()):null;
- function turningSurface(mat,glazed){const revealEnabled=glazed&&heroReveal;mat.onBeforeCompile=shader=>{
+ const laserProgress={value:1},laserActive={value:0},laserPixelRatio={value:renderer.getPixelRatio()};
+ canvas.dataset.laserProgress='1.0000';canvas.dataset.laserActive='false';
+ function turningSurface(mat,glazed){const revealEnabled=glazed&&heroReveal,laserEnabled=glazed&&heroLaser;mat.onBeforeCompile=shader=>{
   shader.uniforms.potteryHeight=surfaceHeight;
   if(brandSeal)shader.uniforms.potterySeal={value:brandSeal};
   if(glazed){shader.uniforms.potterySurface=surfaceMode;shader.uniforms.potteryAccent=glazeAccent;}
   if(revealEnabled){shader.uniforms.potteryGlazeReveal=glazeReveal;shader.uniforms.potteryClayColor={value:clay.color};}
+  if(laserEnabled){shader.uniforms.potteryLaserProgress=laserProgress;shader.uniforms.potteryLaserActive=laserActive;shader.uniforms.potteryLaserPixelRatio=laserPixelRatio;}
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;\nuniform float potteryHeight;').replace('#include <begin_vertex>','#include <begin_vertex>\npotteryUV=uv;\npotteryY=position.y/potteryHeight;');
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'')+(revealEnabled?'\nuniform float potteryGlazeReveal;\nuniform vec3 potteryClayColor;':'')).replace('#include <color_fragment>',`#include <color_fragment>
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'')+(revealEnabled?'\nuniform float potteryGlazeReveal;\nuniform vec3 potteryClayColor;':'')+(laserEnabled?'\nuniform float potteryLaserProgress;\nuniform float potteryLaserActive;\nuniform float potteryLaserPixelRatio;':'')).replace('#include <color_fragment>',`#include <color_fragment>
    float theta=potteryUV.x*6.2831853;
    float clayFlow=sin(theta*3.0+sin(potteryY*7.0)*0.9)*0.6+sin(theta*5.0-potteryY*9.0)*0.4;
    diffuseColor.rgb*=1.0+clayFlow*${glazed?'0.13':'0.085'};
@@ -124,9 +131,35 @@ export function createStudio(canvas,callbacks={}){
    float toeA=1.0-smoothstep(0.17,0.23,length(seal-vec2(-0.47,0.35)));
    float toeB=1.0-smoothstep(0.18,0.24,length(seal-vec2(0.0,0.58)));
    float toeC=1.0-smoothstep(0.17,0.23,length(seal-vec2(0.47,0.35)));
-   ${brandSeal?`vec2 brandUV=vec2(dx*11.0+0.5,(potteryY-0.32)*7.3+0.5);
+   ${brandSeal?`vec2 brandUV=${laserEnabled?'vec2(dx*5.5+0.5,(potteryY-0.47)*3.8+0.5)':'vec2(dx*11.0+0.5,(potteryY-0.32)*7.3+0.5)'};
    float stamp=texture2D(potterySeal,clamp(brandUV,0.0,1.0)).a*step(0.0,brandUV.x)*step(brandUV.x,1.0)*step(0.0,brandUV.y)*step(brandUV.y,1.0);`:'float stamp=max(pad,max(toeA,max(toeB,toeC)))*(1.0-step(0.50,potteryUV.y));'}
-   diffuseColor.rgb=mix(diffuseColor.rgb,${glazed?'vec3(0.46,0.34,0.18)':'diffuseColor.rgb*0.48'},stamp*${glazed?'0.82':'0.60'});
+   ${laserEnabled?`
+   // 40 行蛇形路径从上向下。当前行只有扫过的部分留下金属刻痕，非整块淡入。
+   float laserRow=min(39.0,floor(clamp(1.0-brandUV.y,0.0,1.0)*40.0));
+   float laserDirection=mod(laserRow,2.0);
+   float laserPath=(laserRow+mix(clamp(brandUV.x,0.0,1.0),1.0-clamp(brandUV.x,0.0,1.0),laserDirection))/40.0;
+   float engraved=potteryLaserProgress>=1.0?1.0:(potteryLaserProgress<=0.0?0.0:1.0-smoothstep(potteryLaserProgress-0.0003,potteryLaserProgress+0.0003,laserPath));
+   stamp*=engraved;
+   vec3 engravingGold=vec3(0.92,0.78,0.53)*(0.98+0.02*cos(brandUV.y*251.3274));
+   diffuseColor.rgb=mix(diffuseColor.rgb,engravingGold,stamp*0.96);
+   float laserSweep=min(potteryLaserProgress*40.0,39.99999);
+   float laserHeadRow=floor(laserSweep);
+   float laserHeadX=mix(fract(laserSweep),1.0-fract(laserSweep),mod(laserHeadRow,2.0));
+   float laserHeadY=1.0-(laserHeadRow+0.5)/40.0;
+   float laserBehind=(laserHeadX-brandUV.x)*(1.0-2.0*mod(laserHeadRow,2.0));
+   float laserDy=brandUV.y-laserHeadY;
+   float laserBounds=step(0.0,brandUV.x)*step(brandUV.x,1.0)*step(0.0,brandUV.y)*step(brandUV.y,1.0);
+   float laserOn=potteryLaserActive*(1.0-step(1.0,potteryLaserProgress))*laserBounds;
+   float laserTail=step(0.0,laserBehind)*(1.0-smoothstep(0.18,0.29,laserBehind));
+   float laserCore=exp(-pow(laserDy/0.0024,2.0))*laserTail*exp(-max(0.0,laserBehind)*5.0);
+   float laserHalo=exp(-pow(laserDy/0.017,2.0))*laserTail*exp(-max(0.0,laserBehind)*7.0);
+   // 用屏幕导数维持约 3–4 CSS px 的圆形光头，不能被瓶腹投影压成一段横线。
+   vec2 laserPixel=max(vec2(length(vec2(dFdx(brandUV.x),dFdy(brandUV.x))),length(vec2(dFdx(brandUV.y),dFdy(brandUV.y))))*potteryLaserPixelRatio,vec2(0.00001));
+   vec2 laserHeadOffset=vec2(brandUV.x-laserHeadX,laserDy)/laserPixel;
+   float laserHeadDistance=length(laserHeadOffset);
+   float laserHead=1.0-smoothstep(1.1,2.2,laserHeadDistance);
+   float laserWarmHalo=exp(-pow(laserHeadDistance/4.2,2.0));
+   `:`diffuseColor.rgb=mix(diffuseColor.rgb,${glazed?'vec3(0.46,0.34,0.18)':'diffuseColor.rgb*0.48'},stamp*${glazed?'0.82':'0.60'});`}
    ${revealEnabled?`
    // 釉线在局部坐标里微曲，随器物一起旋转；边界越过整段内外壁后精确恢复原釉面。
    float glazeFront=mix(-0.07,1.11,potteryGlazeReveal)+sin(theta*2.0+0.4)*0.018+sin(theta*5.0-potteryY*2.0)*0.009;
@@ -139,6 +172,7 @@ export function createStudio(canvas,callbacks={}){
    roughnessFactor=clamp(roughnessFactor*(1.0+clayFlow*${glazed?'0.35':'0.18'}),0.06,1.0);
    ${glazed?'roughnessFactor=clamp(roughnessFactor+mineralSpot*0.20+glazeEdge*0.08,0.06,1.0);':''}
    ${revealEnabled?'roughnessFactor=mix(0.5*(1.0+clayFlow*0.18),roughnessFactor,glazeCoverage);':''}
+   ${laserEnabled?`roughnessFactor=mix(roughnessFactor,0.30+0.015*cos(brandUV.y*251.3274),stamp${revealEnabled?'*glazeCoverage':''});`:''}
   `);
   if(revealEnabled)shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
    metalnessFactor*=glazeCoverage;
@@ -148,7 +182,16 @@ export function createStudio(canvas,callbacks={}){
     material.clearcoatRoughness=mix(0.35,material.clearcoatRoughness,glazeCoverage);
    #endif
   `);
- };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?'-hero-reveal-v1':'');}
+  if(laserEnabled)shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
+   metalnessFactor=mix(metalnessFactor,0.60,stamp${revealEnabled?'*glazeCoverage':''});
+  `).replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+   totalEmissiveRadiance+=laserOn${revealEnabled?'*glazeCoverage':''}*(vec3(1.0,0.93,0.76)*laserCore*2.7+vec3(0.38,0.85,1.0)*laserHalo*0.40+vec3(1.0,0.53,0.16)*laserWarmHalo*0.90+vec3(1.0,0.98,0.90)*laserHead*5.5);
+  `).replace('#include <lights_physical_fragment>',`#include <lights_physical_fragment>
+   #ifdef USE_CLEARCOAT
+    material.clearcoat=mix(material.clearcoat,0.14,stamp${revealEnabled?'*glazeCoverage':''});
+   #endif
+  `);
+ };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?'-hero-reveal-v1':'')+(laserEnabled?'-hero-laser-v1':'');}
  turningSurface(clay,false);turningSurface(ceramic,true);
  // 小幅首页预览减少圆周细分；纵向塑形精度与工作台网格保持不变。
  const SEG=animatedPreview?96:144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
@@ -198,7 +241,7 @@ export function createStudio(canvas,callbacks={}){
  const resizer=new ResizeObserver(resizeCanvas);resizer.observe(canvas);
  rebuild();let ready=false;
  function recordFrame(){const state={wheelAngle:(angle%(Math.PI*2)).toFixed(5),motorRpm:rpm.toFixed(3),touchPressure:(drag?.pressure||0).toFixed(4),middleRadius:radiusAt(.5).toFixed(6)};for(const key in state)if(canvas.dataset[key]!==state[key])canvas.dataset[key]=state[key];if(!ready){ready=true;callbacks.onReady?.();}}
- function renderScene(){renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;renderer.render(scene,camera);}
+ function renderScene(){if(heroLaser)laserPixelRatio.value=renderer.getPixelRatio();renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;renderer.render(scene,camera);}
  function reportFrame(now,started){callbacks.onFrame?.({now,renderMs:performance.now()-started,phase,visible,drawCalls:renderer.info?.render?.calls??0,triangles:renderer.info?.render?.triangles??0});}
  function drawPresentation(now){
   frame=0;if(disposed||!visible)return;drawing=true;
@@ -214,7 +257,7 @@ export function createStudio(canvas,callbacks={}){
   if(presentationOnly){drawPresentation(now);return;}frame=0;if(disposed||!visible)return;
   const started=performance.now(),dt=Math.min(clock.getDelta(),.1);elapsed+=dt;
   if(entranceTime<entranceDuration){entranceTime=Math.min(entranceDuration,entranceTime+dt);cameraDistance=baseCameraDistance*(1+.04*(1-entranceTime/entranceDuration)**3);setCamera();}
-  rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;updateHover();shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;rotor.rotation.y=angle;targetGuide.rotation.y=orbit;
+  rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;updateHover();shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;updatePresentationRotation();targetGuide.rotation.y=orbit;
   if(changed){rebuild();needsShadow=true;}needsRender=false;renderScene();recordFrame();callbacks.onTick?.(rpm,dt);reportFrame(now,started);
   if(!disposed&&visible&&!frame)frame=requestAnimationFrame(draw);
  }
@@ -235,14 +278,17 @@ export function createStudio(canvas,callbacks={}){
   setTarget,setPhase(next){up();pendingHover=null;phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
   setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
   setPresentationScale(value){if(!Number.isFinite(value))return;const next=P.clamp(value,.85,1.25);if(next===presentationScale)return;presentationScale=next;baseCameraDistance=7.5/next;cameraDistance=baseCameraDistance*(entranceTime<entranceDuration?1+.04*(1-entranceTime/entranceDuration)**3:1);setCamera();},
+  get presentationAngle(){return rotor.rotation.y;},
+  setPresentationRotation(value){if(!animatedPreview||(value!==null&&!Number.isFinite(value)))return;if(value===null){if(presentationRotation===null)return;presentationOffset=rotor.rotation.y-angle;presentationRotation=null;}else{if(presentationRotation===value)return;presentationRotation=value;}updatePresentationRotation();invalidate();},
   setGlazeReveal(value){if(!heroReveal||!Number.isFinite(value))return;const next=P.clamp(value,0,1);if(next===glazeReveal.value)return;glazeReveal.value=next;canvas.dataset.glazeReveal=next.toFixed(4);invalidate();},
+  setLaserEngraving(progress,active){if(!heroLaser)return;const nextProgress=Number.isFinite(progress)?P.clamp(progress,0,1):laserProgress.value,nextActive=typeof active==='boolean'?(active?1:0):laserActive.value;if(nextProgress===laserProgress.value&&nextActive===laserActive.value)return;laserProgress.value=nextProgress;laserActive.value=nextActive;canvas.dataset.laserProgress=nextProgress.toFixed(4);canvas.dataset.laserActive=String(nextActive===1);invalidate();},
   orbitView(deltaOrbit=0,deltaTilt=0){if(Number.isFinite(deltaOrbit))orbit+=deltaOrbit;if(Number.isFinite(deltaTilt))tilt=P.clamp(tilt+deltaTilt,-.02,.9);setCamera();},
   resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const next=!!v;if(visible===next)return;visible=next;clock.getDelta();callbacks.onVisibility?.(visible,performance.now());if(!visible){up();pendingHover=null;guide.visible=false;cancelAnimationFrame(frame);frame=0;}else if(presentationOnly)invalidate();else if(!frame)frame=requestAnimationFrame(draw);},
   capture(width=1000,height=1100){
-   const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible,oldRotor=rotor.rotation.y,oldDistance=cameraDistance;
+   const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible,oldRotor=rotor.rotation.y,oldDistance=cameraDistance,oldLaserProgress=laserProgress.value,oldLaserActive=laserActive.value;
    // 导出只调整展示朝向，不写入物理 angle；无论截图成败都恢复正在运行的转盘。
-   try{guide.visible=false;orbit=.28;tilt=.24;rotor.rotation.y=0;cameraDistance=7.5;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed){rebuild();needsShadow=true;}renderScene();return canvas.toDataURL('image/png');}
-   finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;rotor.rotation.y=oldRotor;cameraDistance=oldDistance;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderScene();}
+   try{guide.visible=false;orbit=.28;tilt=.24;rotor.rotation.y=0;laserProgress.value=1;laserActive.value=0;cameraDistance=7.5;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed){rebuild();needsShadow=true;}renderScene();return canvas.toDataURL('image/png');}
+   finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;rotor.rotation.y=oldRotor;laserProgress.value=oldLaserProgress;laserActive.value=oldLaserActive;cameraDistance=oldDistance;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderScene();}
   },
   dispose(){disposed=true;cancelAnimationFrame(frame);resizer.disconnect();renderer.dispose();env.dispose();scene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});bump.dispose();plateTex.dispose();dialTexture.dispose();brandSeal?.dispose();},
  };

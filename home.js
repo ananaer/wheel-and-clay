@@ -1,3 +1,4 @@
+import { createEngravingSequence } from './engraving.js';
 /* 首页只消费产品统一信号。按钮向应用发请求，不在这里生成模拟或实时数据。 */
 export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onModeChange=()=>{},onSimChange=()=>{}}={}){
  if(!root)throw new Error('Home root is required');
@@ -12,7 +13,8 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   liveIdle:['实时已连接 · 跑轮暂时静止','Live connection · the wheel is at rest'],
   unknown:['等待实时信号 · 动力暂不可用','Waiting for live data · power unavailable'],
   simUnknown:['模拟动力尚未就绪','Simulation is not ready yet'],
-  enter:['开始你的创作','MAKE YOURS'],study:['釉色实验','THE GLAZE STUDY'],replay:['再看一次','Replay'],powered:['全厂唯一动力师','CHIEF OF SPIN'],proof:['把跑动变成作品。','From running to remarkable.'],
+  enter:['开始你的创作','MAKE YOURS'],study:['激光刻印','LASER SIGNATURE'],replay:['重新刻印','Re-etch'],powered:['全厂唯一动力师','CHIEF OF SPIN'],proof:['把跑动变成作品。','From running to remarkable.'],
+  laserUnavailable:['预览不可用','Preview unavailable'],laserAlign:['正在定位','Positioning'],laserScan:['正在刻印','Engraving'],laserDone:['刻印完成','Mark set'],laserPaused:['等待动力','Awaiting power'],
   markLabel:['Squeekchain 官方仓鼠标志','Official Squeekchain hamster mark'],
   simRpm:['模拟轮速','Simulated speed'],liveRpm:['实测轮速','Measured speed'],rpmUnit:['转 / 分','RPM'],
   workshopRunning:['工坊开工中','The studio is running'],workshopIdle:['工坊休息中','The studio is resting'],workshopUnknown:['等待跑轮信号','Waiting for wheel data'],workshopCoasting:['陶轮正在减速','Pottery wheel coasting'],
@@ -42,7 +44,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
    </div>
    <div class="home-art">
     <div class="home-stage-light" aria-hidden="true"></div>
-    <div class="home-study-caption"><span><i aria-hidden="true">01</i><span data-home-text="study"></span></span><button type="button" class="home-replay"><span data-home-text="replay"></span><span aria-hidden="true">↺</span></button></div>
+    <div class="home-study-caption"><span><i aria-hidden="true">01</i><span data-home-text="study"></span></span><div class="home-etch-controls"><span class="home-etch-status" role="status" aria-live="polite"></span><button type="button" class="home-replay"><span data-home-text="replay"></span><span aria-hidden="true">↺</span></button></div></div>
     <div class="home-workpiece"><canvas class="home-canvas" id="home-scene" role="img"></canvas><div class="home-preview-fallback"><p class="home-fallback-text" data-home-text="loading"></p></div></div>
     <div class="home-reveal-track" aria-hidden="true"><span class="home-rotor"></span></div>
    </div>
@@ -57,31 +59,40 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   </div>
  </div>`;
  const $=selector=>root.querySelector(selector);
- const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),motorState=$('.home-motor-state'),simControls=$('.home-sim-controls'),fallbackText=$('.home-fallback-text');
+ const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),motorState=$('.home-motor-state'),simControls=$('.home-sim-controls'),fallbackText=$('.home-fallback-text'),etchStatus=$('.home-etch-status');
  const modeButtons=[...root.querySelectorAll('[data-home-mode]')],simButtons=[...root.querySelectorAll('[data-home-sim]')],textNodes=[...root.querySelectorAll('[data-home-text]')];
- let reveal=.28;
- let preview=null,enabled=true,inView=false,disposed=false,angle=0,initialFrame=0,lastMotion='stopped',motionUiElapsed=.25,lastSignalStep=-1;
+ const engraving=createEngravingSequence();
+ let engravingState=engraving.snapshot();
+ let preview=null,enabled=true,inView=false,disposed=false,lastMotion='stopped',motionUiElapsed=.25,lastSignalStep=-1;
  let lastSignal={state:'unknown',mode:'live',rpm:null,workUnits:null,block:null,observedAt:null};
  let piece={profile:null,form:'vase',glaze:'ink',surface:'glossy',finish:.82},profileInput=null;
  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
  const number=value=>typeof value==='number'&&Number.isFinite(value)?value:null;
  const recordValue=value=>(typeof value==='number'&&Number.isFinite(value)&&value>=0)||(typeof value==='string'&&/^\d+$/.test(value))?String(value):null;
  const setAttribute=(element,key,value)=>{const text=String(value);if(element.getAttribute(key)!==text)element.setAttribute(key,text);};
- function motorCaption(speed=preview?.rpm||0){return lastSignal.state==='unknown'?'workshopUnknown':lastSignal.state==='idle'&&speed>=.15?'workshopCoasting':lastSignal.state==='running'?'workshopRunning':'workshopIdle';}
+ function motorCaption(speed=preview?.rpm||0){return root.dataset.preview==='unavailable'?'laserUnavailable':lastSignal.state==='unknown'?'workshopUnknown':lastSignal.state==='idle'&&speed>=.15&&engravingState.phase==='complete'?'workshopCoasting':lastSignal.state==='running'?'workshopRunning':'workshopIdle';}
  function onTick(rpm,dt){
   if(disposed||!enabled||!inView||document.hidden)return;
   const speed=Number.isFinite(rpm)?Math.max(0,rpm):0;
   const delta=Math.min(.1,Math.max(0,dt||0));
-  angle=(angle+speed*6*delta)%360;
-  if(!motion.matches&&lastSignal.state==='running'&&reveal<1){reveal=Math.min(1,reveal+speed/60*delta*.72/1.4);preview?.setGlazeReveal?.(reveal);rotor.style.transform=`scaleX(${reveal})`;}
-  setAttribute(root,'data-reveal-complete',reveal>=1);
-  // 显影进度只改变合成层缩放；动力亮度与状态每秒最多更新四次。
+  applyEngraving(engraving.step({dt:delta,rpm:speed,powered:lastSignal.state==='running',reducedMotion:motion.matches}));
+  // 刻印仅更新曲面着色器与合成层进度，动力读数每秒最多更新四次。
   motionUiElapsed+=delta;if(motionUiElapsed<.25)return;motionUiElapsed%=.25;
   const signalStep=Math.round(Math.min(1,speed/10)*20);
   if(signalStep!==lastSignalStep){lastSignalStep=signalStep;root.style.setProperty('--home-signal',String(signalStep/20));}
   const nextMotion=speed<.015?'stopped':lastSignal.state==='running'?'moving':'coasting';
   if(nextMotion!==lastMotion){lastMotion=nextMotion;root.dataset.motion=nextMotion;}
   put(motorState,t(motorCaption(speed)));
+ }
+ function engravingCaption(){return root.dataset.preview==='unavailable'?'laserUnavailable':engravingState.progress>=1?'laserDone':lastSignal.state!=='running'?'laserPaused':engravingState.phase==='align'?'laserAlign':'laserScan';}
+ function applyEngraving(state){
+  engravingState=state;
+  preview?.setPresentationRotation?.(state.rotation);
+  preview?.setLaserEngraving?.(state.progress,state.active);
+  const scale=`scaleX(${state.progress})`;if(rotor.style.transform!==scale)rotor.style.transform=scale;
+  setAttribute(root,'data-engraving-phase',state.phase);
+  setAttribute(root,'data-reveal-complete',state.progress>=1);
+  put(etchStatus,t(engravingCaption()));
  }
  function applyPiece(all=false,previous={}){
   if(!preview)return;
@@ -94,9 +105,9 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   if(preview||disposed||root.dataset.preview==='unavailable')return;
   const bounds=canvas.getBoundingClientRect();if(bounds.width<2||bounds.height<2)return;
   try{
-   preview=createStudio(canvas,{animatedPreview:true,transparentBackground:true,presentationEntrance:true,heroLighting:true,heroPlatform:true,heroReveal:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onTick,onReady(){root.dataset.preview='ready';}});
-   preview.setPhase('glaze');preview.setRpm(lastSignal.state==='running'?lastSignal.rpm||0:0);applyPiece(true);preview.setPresentationView?.(.35,.12);preview.setPresentationScale?.(1.08);if(motion.matches)reveal=1;preview.setGlazeReveal?.(reveal);rotor.style.transform=`scaleX(${reveal})`;
-  }catch(error){root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';put(fallbackText,t('unavailable'));$('.home-replay').disabled=true;}
+   preview=createStudio(canvas,{animatedPreview:true,transparentBackground:true,presentationEntrance:true,heroLighting:true,heroPlatform:true,heroLaser:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onTick,onReady(){root.dataset.preview='ready';}});
+   preview.setPhase('glaze');preview.setRpm(lastSignal.state==='running'?lastSignal.rpm||0:0);applyPiece(true);preview.setPresentationView?.(.35,.12);preview.setPresentationScale?.(1.08);applyEngraving(engraving.step({dt:0,rpm:0,powered:false,reducedMotion:motion.matches}));
+  }catch(error){root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';put(fallbackText,t('unavailable'));$('.home-replay').disabled=true;put(etchStatus,t('laserUnavailable'));put(motorState,t('laserUnavailable'));}
  }
  function syncVisibility(){
   const show=enabled&&inView&&!document.hidden&&!disposed&&root.dataset.preview!=='unavailable';
@@ -119,12 +130,12 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  const sizeObserver=typeof ResizeObserver==='function'?new ResizeObserver(()=>{observeVisibleCanvas();if(enabled&&inView&&!document.hidden)syncVisibility();}):null;sizeObserver?.observe(canvas);if(header)sizeObserver?.observe(header);
  if(typeof IntersectionObserver!=='function')listen(window,'scroll',observeVisibleCanvas,{passive:true});
  listen(document,'visibilitychange',syncVisibility);
- listen(motion,'change',()=>{root.dataset.reducedMotion=String(motion.matches);if(motion.matches){reveal=1;preview?.setGlazeReveal?.(1);rotor.style.transform='scaleX(1)';}$('.home-replay').disabled=motion.matches||root.dataset.preview==='unavailable';});
- listen(canvas,'webglcontextlost',()=>{root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';preview?.setVisible(false);$('.home-replay').disabled=true;put(fallbackText,t('unavailable'));});
+ listen(motion,'change',()=>{root.dataset.reducedMotion=String(motion.matches);if(motion.matches)applyEngraving(engraving.step({dt:0,rpm:0,powered:false,reducedMotion:true}));$('.home-replay').disabled=motion.matches||root.dataset.preview==='unavailable';});
+ listen(canvas,'webglcontextlost',()=>{root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';preview?.setVisible(false);$('.home-replay').disabled=true;put(fallbackText,t('unavailable'));put(etchStatus,t('laserUnavailable'));put(motorState,t('laserUnavailable'));});
  for(const button of modeButtons)listen(button,'click',()=>onModeChange(button.dataset.homeMode));
  for(const button of simButtons)listen(button,'click',()=>{if(lastSignal.mode==='sim')onSimChange(button.dataset.homeSim);});
  listen($('#home-enter'),'click',()=>onEnter());
- listen($('.home-replay'),'click',()=>{if(motion.matches)return;reveal=.28;preview?.setGlazeReveal?.(reveal);rotor.style.transform=`scaleX(${reveal})`;});
+ listen($('.home-replay'),'click',()=>{if(motion.matches)return;engraving.reset(preview?.presentationAngle);applyEngraving(engraving.snapshot());});
  function renderSignal(){
   const simulated=lastSignal.mode==='sim',state=lastSignal.state,unknown=state==='unknown';
   setAttribute(root,'data-power-mode',lastSignal.mode);setAttribute(root,'data-wheel-state',state);if(simControls.hidden===simulated)simControls.hidden=!simulated;
@@ -133,6 +144,8 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   put(signal,t(simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));setAttribute(signal,'data-state',state);
   put(rpmLabel,unknown?'—':lastSignal.rpm>0&&lastSignal.rpm<.1?'<0.1':(lastSignal.rpm||0).toFixed(1));
   put(motorState,t(motorCaption()));
+  if(state!=='running')applyEngraving(engraving.step({dt:0,rpm:0,powered:false,reducedMotion:motion.matches}));
+  put(etchStatus,t(engravingCaption()));
   const stamp=lastSignal.observedAt;
   setAttribute(signal,'title',!simulated&&stamp!==null?`${t('observed')} · ${new Intl.DateTimeFormat(getLang()==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(stamp)} UTC+8`:'');
   setAttribute(root,'data-observed-at',stamp??'');setAttribute(root,'data-work-units',lastSignal.workUnits??'');setAttribute(root,'data-block',lastSignal.block??'');
@@ -164,6 +177,6 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
    if(number(value.finish)!==null)next.finish=Math.max(0,Math.min(1,value.finish));
    piece=next;applyPiece(false,previous);
   },
-  dispose(){if(disposed)return;disposed=true;cancelAnimationFrame(initialFrame);observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());preview?.dispose();}
+  dispose(){if(disposed)return;disposed=true;observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());preview?.dispose();}
  };
 }
