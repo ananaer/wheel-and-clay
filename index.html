@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#eae8e1"><meta name="description" content="真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。"><title>轮间 · 仓鼠陶艺工作室</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="home.css"><link rel="stylesheet" href="share.css"></head>
+<body>
+<header class="header">
+ <a class="brand" href="#home" aria-label="轮间"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 15C4 7 12 1 18 9M30 9C36 1 44 7 36 15"/><circle cx="24" cy="25" r="17"/><circle cx="24" cy="25" r="9"/><path d="M24 8v8m17 9h-8M24 42v-8M7 25h8"/></svg><span data-i18n="brand">轮间</span><span class="brand-divider"></span><small data-i18n="studio">仓鼠陶艺工作室</small></a>
+ <nav class="page-nav" aria-label="页面导航" data-label="navigation"><button id="nav-studio" data-page="studio" aria-current="page" data-i18n="navStudio">工作台</button><button id="nav-orders" data-page="orders" data-i18n="navOrders">20 圈挑战</button><button id="collection" data-page="collection"><span data-i18n="collection">藏品</span><span id="collection-count">0</span></button></nav>
+ <div class="header-actions"><div class="audio-control"><div class="audio-pill"><button id="sound" aria-pressed="false"><svg class="music-play" viewBox="0 0 18 18" aria-hidden="true"><path d="m6 4 7 5-7 5Z"/></svg><svg class="music-bars" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 7v4M7 4v10M11 2v14M15 6v6"/></svg><span id="sound-label">开启音乐</span></button><button id="sound-settings" aria-expanded="false" aria-controls="sound-panel" data-label="soundSettings"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg></button></div><section id="sound-panel" class="sound-panel" hidden aria-labelledby="sound-title"><div class="sound-panel-heading"><div><span data-i18n="originalSound">原创音景</span><strong id="sound-title" data-i18n="trackTitle">木与光</strong></div><span id="sound-state" role="status"></span></div><div class="section-label"><label for="sound-volume" data-i18n="volume">音量</label><output id="sound-volume-value" for="sound-volume">36%</output></div><input id="sound-volume" type="range" min="0" max="100" value="36"><label class="wheel-audio-option"><span data-i18n="wheelSound">转盘声</span><input id="wheel-sound" type="checkbox" checked></label></section></div><button id="about" class="help-button" data-label="about">?</button><select id="language" aria-label="界面语言"><option value="zh">中文</option><option value="en">English</option></select></div>
+</header>
+<section id="home-intro" data-view="home" hidden></section>
+<main id="studio" class="workspace" data-view="studio">
+ <section class="intro">
+  <div class="eyebrow"><span class="tiny-line"></span><span data-i18n="eyebrow">一人一鼠，共同创作</span></div>
+  <h1 tabindex="-1" data-i18n="headline">仓鼠跑轮。<br>你来拉坯。</h1>
+  <p class="lead" data-i18n="lead">一只真实仓鼠决定转盘的速度。<br>你来决定陶器的形状。</p>
+  <div id="order-hud" hidden><div class="order-meter"><div><span id="order-count-label">剩余动力</span><strong id="order-remaining">20.0</strong><small data-order-i18n="unit">圈</small></div><div class="order-match"><span data-order-i18n="match">轮廓吻合</span><strong id="order-match">—</strong></div></div><progress id="order-progress" max="20" value="20" aria-label="剩余挑战圈数"></progress><p id="repair-metrics" hidden></p><p id="order-state" role="status"></p><button id="exit-order" data-order-i18n="exit">返回自由创作</button></div>
+  <div class="intro-actions"><button id="open-order" data-order-i18n="open">接一份 20 圈订单 ↗</button></div>
+ </section>
+  <section class="motor-card" aria-label="转盘动力" data-label="motorLabel">
+   <div class="motor-heading"><span class="motor-dot"></span><strong>Squeektoshi</strong></div>
+   <div class="hamster-telemetry">
+    <svg class="hamster-wheel" viewBox="0 0 100 96" aria-hidden="true">
+     <path class="wheel-stand" d="M49 47 38 87M49 47 62 87M26 89h48"/>
+     <circle class="wheel-rim" cx="49" cy="43" r="37"/>
+     <g id="hamster-rotor"><circle cx="49" cy="43" r="32" stroke-dasharray="1 6"/><path d="M49 11v10m32 22H71M49 75V65M17 43h10"/><circle class="wheel-magnet" cx="49" cy="6" r="3"/></g>
+     <g id="hamster-body"><path class="hamster-fur" d="M26 59c-2-8 3-17 12-18 5-1 10 0 14 4 0-7 5-10 9-6 2 2 2 5 1 7 8 1 13 5 15 10l-6 5c-5 4-12 4-17 2-8 6-22 6-28-4Z"/><path class="hamster-belly" d="M31 59c5 5 14 7 24 2"/><circle class="hamster-eye" cx="66" cy="51" r="1.4"/><path d="m75 57 5-1m-2 4 4 1"/><path id="hamster-legs" d="m33 63-5 6m16-5 5 5m10-7-3 7m12-8 4 5"/></g>
+    </svg>
+    <div class="input-reading"><span class="reading-label" data-i18n="inputSpeed">仓鼠跑轮</span><div class="rpm-row"><span id="rpm">18.0</span><span class="rpm-unit" data-i18n="rpmUnit">转 / 分</span></div></div>
+   </div>
+   <div class="power-effect"><p id="power-effect" role="status">跑轮在动，陶土可以塑形。</p><p id="recent-activity" class="recent-activity" hidden></p></div>
+   <div class="source-row"><span id="source-badge">模拟练习</span></div>
+   <div class="mode-switch" role="group" data-label="sourceLabel"><button id="sim" aria-pressed="true" data-i18n="sim">模拟</button><button id="live" aria-pressed="false" data-i18n="live">实时</button></div>
+   <div class="sim-states" role="group" data-label="simLabel"><button data-sim="steady" aria-pressed="true" data-i18n="steady">匀速</button><button data-sim="sprint" aria-pressed="false" data-i18n="sprint">冲刺</button><button data-sim="rest" aria-pressed="false" data-i18n="rest">停跑</button></div>
+   <div id="live-info" hidden><div class="sample-row"><span data-i18n="sampleLabel">采样 · UTC+8</span><time id="sample-time">—</time><button id="retry" class="text-button" data-i18n="refresh">刷新</button></div><div class="connection-row"><span id="live-status" role="status"></span></div><button id="connection-details" class="connection-details" data-i18n="connectionDetails">连接详情</button></div>
+  </section>
+ <section class="stage" aria-label="互动陶艺转盘" data-label="stageLabel">
+  <div class="stage-heading"><span id="piece-number">作品 001</span><span id="stage-source" class="stage-tag">模拟动力</span></div>
+  <canvas id="scene" tabindex="0" aria-describedby="canvas-help" data-label="canvasLabel"></canvas>
+  <p id="canvas-help" class="sr-only" data-i18n="canvasHelp">塑形时按住陶器，向内或向外轻推，保持施力让陶土逐渐变化；松手立即停止。也可用精细塑形工具，或按上下方向键选择高度、左右方向键改变宽度。施釉时拖动旋转视角。</p>
+  <div id="loading" class="loading"><span></span><p data-i18n="loading">工作室正在开灯</p></div>
+  <div id="webgl-error" class="webgl-error" hidden><h2 data-i18n="webglTitle">工作室需要图形加速</h2><p data-i18n="webglBody">请使用支持 WebGL 的浏览器，并开启硬件加速后重试。</p><button id="reload" data-i18n="retry">重试</button></div>
+  <div class="stage-bottom"><div class="stage-caption"><span class="caption-symbol" aria-hidden="true">✳</span><span id="stage-hint">左右拖动陶器，开始塑形</span></div><button id="reset-view" class="icon-button" data-label="resetView" title="复位视角"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6a7 7 0 1 1-1 7M4 2v5h5"/></svg></button></div>
+ </section>
+ <aside class="tools" aria-label="陶艺工具" data-label="toolLabel">
+  <div class="steps"><button data-phase="shape" aria-pressed="true"><span>01</span><span data-i18n="shape">拉坯</span></button><button data-phase="glaze" aria-pressed="false"><span>02</span><span data-i18n="glaze">施釉</span></button></div>
+  <section id="shape-tools">
+   <div class="section-label"><span data-i18n="startShape">选择起形</span><span class="micro" data-i18n="clay">湿陶土</span></div>
+   <div class="forms" role="group" data-label="startShape"><button data-form="vase" aria-pressed="true"><svg viewBox="0 0 40 48" aria-hidden="true"><path d="M14 5h12c-5 9-4 11 3 17 12 12 3 20-9 20S-1 34 11 22c7-6 8-8 3-17Z"/></svg><span data-i18n="vase">圆腹</span></button><button data-form="column" aria-pressed="false"><svg viewBox="0 0 40 48" aria-hidden="true"><path d="M10 5h20l-1 36H11Z"/></svg><span data-i18n="column">直筒</span></button><button data-form="bowl" aria-pressed="false"><svg viewBox="0 0 40 48" aria-hidden="true"><path d="M3 17h34c-1 13-7 20-17 20S4 30 3 17Z"/></svg><span data-i18n="bowl">敞口</span></button></div>
+   <div class="section-label"><label for="brush" data-i18n="brush">指腹宽度</label><span id="brush-value">中</span></div><input id="brush" type="range" min="5" max="24" value="13">
+   <div class="edit-history"><button id="undo" disabled><span aria-hidden="true">↶</span><span data-i18n="undo">撤销</span></button><button id="redo" disabled><span aria-hidden="true">↷</span><span data-i18n="redo">重做</span></button></div>
+   <details class="precise"><summary data-i18n="precise">精细塑形</summary><label for="height" data-i18n="height">塑形高度</label><input id="height" type="range" min="8" max="100" value="55"><div class="nudge"><button id="narrow" data-i18n="narrow">− 收窄</button><button id="widen" data-i18n="widen">＋ 拉宽</button></div></details>
+  </section>
+  <section id="glaze-tools" hidden>
+   <div class="section-label"><span data-i18n="glazes">釉色</span><span id="glaze-name">松石青</span></div>
+   <div class="swatches" role="group" data-label="glazes"></div>
+   <div class="section-label"><span data-i18n="surface">表面工艺</span></div>
+   <div id="surface-options" class="surface-options" role="group" data-label="surface"></div>
+   <div class="section-label"><label for="finish" data-i18n="finish">釉面光泽</label><span id="finish-value">72%</span></div><input id="finish" type="range" min="0" max="100" value="72">
+
+  </section>
+  <div class="tool-footer"><button id="save" class="primary-button" data-i18n="next">完成拉坯 ↗</button><button id="new" class="text-button new-button" data-i18n="new">换一块陶土</button></div>
+ </aside>
+</main>
+<div id="toast" role="status" hidden></div>
+<section id="orders-page" class="page-panel orders-page" data-view="orders" hidden aria-labelledby="orders-title">
+ <div class="page-heading"><div><p class="eyebrow" data-order-i18n="chapter">20 圈挑战</p><h1 id="orders-title" tabindex="-1" data-order-i18n="choose">选择目标器形</h1><p class="page-lead" data-order-i18n="rules">在陶轮转完 20 圈前，照着金色轮廓完成拉坯。仓鼠停跑、陶轮停稳后，暂停加工和计数。</p></div><button id="resume-order" class="text-button" data-i18n="resumePiece">返回当前作品 ↗</button></div>
+ <div class="play-options" role="group" aria-labelledby="play-label"><span id="play-label" class="sr-only" data-order-i18n="playLabel">选择玩法</span><button data-play="study" aria-pressed="false"><strong data-order-i18n="study"></strong><span data-order-i18n="studyShort"></span></button><button data-play="turns" aria-pressed="true"><strong data-order-i18n="turns"></strong><span data-order-i18n="turnsShort"></span></button><button data-play="repair" aria-pressed="false"><strong data-order-i18n="repair"></strong><span data-order-i18n="repairShort"></span></button></div>
+ <p id="order-rules" class="play-rule"></p>
+ <div class="order-options" role="group" aria-labelledby="orders-title"></div>
+ <div class="selected-order"><strong id="selected-order-name"></strong><p id="selected-order-tip"></p></div>
+ <div class="order-launch"><div><div class="order-mode" role="group" data-label="sourceLabel"><button data-order-mode="sim" aria-pressed="true" data-i18n="sim">模拟</button><button data-order-mode="live" aria-pressed="false" data-i18n="live">实时</button></div><p id="order-start-source" class="order-source"></p><p id="order-unsaved" data-order-i18n="unsaved" hidden>开始新局会替换当前陶坯，可先收藏。</p><button id="order-keep-first" class="text-button" data-order-i18n="keepFirst" hidden>先收藏当前作品</button></div><button id="start-order" class="primary-button" data-order-i18n="start">开始挑战 ↗</button></div>
+</section>
+<section id="collection-page" class="page-panel collection-page" data-view="collection" hidden aria-labelledby="collection-title"><div class="page-heading"><div><p class="eyebrow" data-i18n="collectionKicker">本机收藏</p><h1 id="collection-title" tabindex="-1" data-i18n="collectionTitle">我的陶器</h1><p class="page-lead" data-i18n="storage">最多保存 12 件。清除浏览器数据会移除藏品。</p></div><button id="gallery-work" class="text-button" data-i18n="resumePiece">返回当前作品 ↗</button></div><div id="gallery"></div></section>
+<dialog id="order-result" class="order-result"><div class="dialog-top"><span id="result-source"></span><button data-close="order-result" class="close-button" data-label="close">×</button></div><h2 id="result-title"></h2><div class="result-score"><strong id="result-score">0</strong><span>%</span><small data-order-i18n="match">轮廓吻合</small></div><p id="result-note"></p><dl class="result-facts"><div><dt data-order-i18n="used">消耗动力</dt><dd id="result-turns"></dd></div><div><dt data-order-i18n="stops">中途停跑</dt><dd id="result-stops"></dd></div><div><dt data-order-i18n="order">目标器形</dt><dd id="result-order"></dd></div></dl><div class="saved-actions"><button id="result-keep" class="primary-button" data-order-i18n="decorate">施釉并收藏</button><button id="result-again" class="secondary-button" data-order-i18n="again">再试一局</button></div><p class="order-fine" data-order-i18n="scoring">吻合度按不同高度的器形轮廓估算。本机练习成绩，不是官方认证或工艺评价。</p></dialog>
+<dialog id="connection-dialog"><div class="dialog-top"><span data-i18n="connectionDetails">连接详情</span><button data-close="connection-dialog" class="close-button" data-label="close">×</button></div><h2 data-i18n="connectionTitle">动力从哪里来？</h2><p id="connection-state" role="status"></p><dl class="connection-facts"><div><dt data-i18n="connectionResponse"></dt><dd id="connection-response"></dd></div><div><dt data-i18n="connectionReceived"></dt><dd id="connection-received"></dd></div><div><dt data-i18n="connectionObserved"></dt><dd id="connection-observed"></dd></div><div><dt data-i18n="connectionSpeed"></dt><dd id="connection-speed"></dd></div></dl><p data-i18n="connectionCadence"></p><p class="connection-local" data-i18n="connectionLocal"></p><a href="https://api.squeekchain.com/v1/status" target="_blank" rel="noopener noreferrer" data-i18n="sourceLink"></a><button id="connection-refresh" class="primary-button" data-i18n="connectionRefresh">重新检测</button></dialog>
+<dialog id="about-dialog"><div class="dialog-top"><span data-i18n="about">操作帮助</span><button data-close="about-dialog" class="close-button" data-label="close">×</button></div><h2 data-i18n="aboutTitle">三步，完成一件陶器。</h2><ol class="help-steps"><li><strong data-i18n="shape">拉坯</strong><p data-i18n="helpShape">按住陶器向内或向外轻推，保持施力，松手即停。也可以展开精细塑形，用按钮调整。</p></li><li><strong data-i18n="glaze">施釉</strong><p data-i18n="helpGlaze">完成拉坯后挑选釉色、调整光泽，拖动陶器查看其他角度。</p></li><li><strong data-i18n="collection">藏品</strong><p data-i18n="helpSave">点击收藏作品，之后可在藏品页重新查看。</p></li></ol><p class="help-connection" data-i18n="helpConnection">实时模式每 8 秒更新。仓鼠停跑时可等待，或切到模拟练习；信号未知时暂停加工。</p><a href="https://api.squeekchain.com/v1/status" target="_blank" rel="noopener noreferrer" data-i18n="sourceLink">查看原始数据 ↗</a></dialog>
+<dialog id="saved-dialog" class="saved-dialog"><div class="dialog-top"><span data-i18n="savedTitle">你的作品</span><button data-close="saved-dialog" class="close-button" data-label="close">×</button></div><img id="saved-image" alt=""><div id="share-tools"></div><div class="saved-actions"><button id="open-collection" class="primary-button" data-i18n="viewCollection">查看藏品</button><button id="back-work" class="secondary-button" data-i18n="back">继续创作</button></div><p id="save-status"></p></dialog>
+<dialog id="new-dialog" class="confirm-dialog"><div class="dialog-top"><span data-i18n="new">开始下一件</span><button data-close="new-dialog" class="close-button" data-label="close">×</button></div><h2 data-i18n="newTitle">留住这一次，<br>再开始下一次。</h2><p data-i18n="newBody">当前陶坯还没有收藏。你可以先收藏，也可以直接开始新作品。</p><div class="confirm-actions"><button id="save-first" class="primary-button" data-i18n="saveFirst">先收藏</button><button id="discard" class="secondary-button" data-i18n="discard">直接开始</button></div></dialog>
+<script src="core.js"></script><script src="engine.js"></script><script type="module" src="app.js"></script>
+</body></html>

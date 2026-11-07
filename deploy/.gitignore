@@ -1,0 +1,3 @@
+# 从独立 HTML 重建，不提交平台缓存。
+public/
+.wrangler/

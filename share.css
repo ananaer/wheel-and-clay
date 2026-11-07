@@ -1,0 +1,12 @@
+/* 作品卡分享保持独立，普通 X 链接不假装能够预附本机图片。 */
+.share-tools{margin-top:20px;padding-top:18px;border-top:1px solid var(--line);text-align:left}
+.share-tools .share-title{font:400 18px/1.35 var(--serif);letter-spacing:-.015em;margin:0 0 13px}
+.share-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px}
+.share-actions>a,.share-actions>button{display:flex;align-items:center;justify-content:center;min-height:44px;padding:12px 10px;border:1px solid #aab9a4;border-radius:2px;font:11px/1.5 var(--sans);text-align:center;text-decoration:none!important;overflow-wrap:anywhere}
+.share-actions .share-download{background:var(--green);border-color:var(--green);color:#f2f0e7}.share-actions .share-download:hover{background:#376650}
+.share-actions .share-x:hover,.share-actions .share-native:hover{background:#dfe5d7}
+.share-actions .share-native{grid-column:1/-1;background:#e4e8dd}
+.share-actions [aria-disabled=true]{opacity:.35;pointer-events:none}
+.share-tools .share-instruction,.share-tools .share-feedback{font-size:10px;line-height:1.7;margin:10px 0 0;white-space:normal}
+.share-tools .share-feedback{color:var(--green)}
+@media(max-width:400px){.share-tools .share-title{font-size:17px}.share-actions{gap:7px}.share-actions>a,.share-actions>button{font-size:10px;padding:11px 7px}.share-tools .share-instruction,.share-tools .share-feedback{font-size:9px}}

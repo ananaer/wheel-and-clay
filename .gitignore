@@ -1,0 +1,24 @@
+# Local build outputs and browser QA artifacts
+/Wheel-and-Clay.html
+*.zip
+/qa/
+/audio/
+/deploy/public/
+.wrangler/
+
+# Local credentials and environment settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Runtime and editor caches
+__pycache__/
+*.py[cod]
+node_modules/
+.DS_Store
+*.log
+.vscode/
+.idea/

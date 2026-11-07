@@ -1,0 +1,8 @@
+# 轮间独立静态站点；不关联其他项目的 KV、路由或 Worker。
+name = "wheel-and-clay"
+compatibility_date = "2026-11-07"
+workers_dev = true
+preview_urls = false
+
+[assets]
+directory = "./public"
