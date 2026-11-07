@@ -12,13 +12,14 @@ export function getCompanion(id){
 }
 
 const companionWords={
- eyebrow:['Squeeks 共创社','The Squeeks studio'],
- title:['挑一位 Squeek，\n把它的颜色烧进作品。','Pick a Squeek.\nFire its colors into your piece.'],
- choose:['选择配色伙伴','Choose a color companion'],
+ eyebrow:['Squeek 配色','Squeek palettes'],
+ title:['选择你的 Squeek 釉色','Choose your Squeek glaze'],
+ choose:['选择釉色','Choose a glaze color'],
+ usage:['先选配色，塑形后在施釉步骤使用。','Pick a color now. Use it in the glazing step.'],
  sample:['Sepolia 角色样例','Sepolia character sample'],
- palette:['角色配色','Companion palette'],
- start:['一起做陶器','Make a pot together'],
- signature:['你 × Squeek #','You × Squeek #'],
+ palette:['已选釉色','Selected glaze'],
+ start:['使用这款配色','Use this palette'],
+ signature:['配色灵感 · Squeek #','Color inspiration · Squeek #'],
  select:['选择','Choose'],
  updated:['配色已更新为','Palette updated to'],
  failed:['这次未能更新配色，请再试一次。','The palette could not be updated. Please try again.'],
@@ -48,7 +49,7 @@ export function createCompanions({root,lang=()=> 'zh',selected=()=> '8891',onSel
  const choiceNodes=COMPANIONS.map(companion=>{
   const button=element('button','companions-choice');button.type='button';button.dataset.companion=companion.id;button.setAttribute('aria-pressed','false');
   const image=element('img');image.src=companion.imageSrc;image.alt='';image.width=45;image.height=45;image.decoding='async';
-  const label=element('span','companions-choice-id',`#${companion.id}`);button.append(image,label);group.append(button);
+  const label=element('span','companions-choice-name');button.append(image,label);group.append(button);
   listen(button,'click',()=>{
    if(disposed)return;
    const request=++selectionRequest;
@@ -58,9 +59,9 @@ export function createCompanions({root,lang=()=> 'zh',selected=()=> '8891',onSel
     else announce(companion);
    }catch{if(!disposed)write(status,text('failed'));}
   });
-  return {button,companion};
+  return {button,label,companion};
  });
- const traits=element('p','companions-traits');copy.append(eyebrow,title,group,traits);
+ const usage=element('p','companions-usage');usage.id=`companions-usage-${number}`;group.setAttribute('aria-describedby',usage.id);copy.append(eyebrow,title,group,usage);
  const action=element('div','companions-action'),palette=element('div','companions-palette'),swatch=element('span','companions-swatch');swatch.setAttribute('aria-hidden','true');
  const paletteCopy=element('div'),paletteLabel=element('span','companions-palette-label'),paletteName=element('strong','companions-palette-name');paletteCopy.append(paletteLabel,paletteName);palette.append(swatch,paletteCopy);
  const start=element('button','companions-start');start.type='button';const startText=element('span'),arrow=element('span','companions-start-arrow','↗');arrow.setAttribute('aria-hidden','true');start.append(startText,arrow);
@@ -76,9 +77,9 @@ export function createCompanions({root,lang=()=> 'zh',selected=()=> '8891',onSel
   root.dataset.companion=companion.id;root.dataset.companionsLang=en?'en':'zh';root.style.setProperty('--companion-accent',companion.accent);root.style.setProperty('--companion-glaze',companion.color);
   if(portraitImage.getAttribute('src')!==companion.imageSrc)portraitImage.src=companion.imageSrc;
   portraitImage.alt=`Squeek #${companion.id} · ${companion.traits[index]}`;
-  write(roleId,`Squeek #${companion.id}`);write(sample,text('sample'));write(eyebrow,text('eyebrow'));write(title,text('title'));write(traits,companion.traits[index]);
+  write(roleId,`Squeek #${companion.id}`);write(sample,text('sample'));write(eyebrow,text('eyebrow'));write(title,text('title'));write(usage,text('usage'));
   group.setAttribute('aria-label',text('choose'));
-  for(const item of choiceNodes){item.button.setAttribute('aria-pressed',String(item.companion.id===companion.id));item.button.setAttribute('aria-label',`${text('select')} Squeek #${item.companion.id} · ${item.companion.glazeName[index]}`);}
+  for(const item of choiceNodes){write(item.label,item.companion.glazeName[index]);item.button.setAttribute('aria-pressed',String(item.companion.id===companion.id));item.button.setAttribute('aria-label',`${text('select')} ${item.companion.glazeName[index]} · Squeek #${item.companion.id}`);}
   write(paletteLabel,text('palette'));write(paletteName,companion.glazeName[index]);write(startText,text('start'));write(signature,text('signature')+companion.id);write(status,'');
  }
  render();

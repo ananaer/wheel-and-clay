@@ -192,7 +192,7 @@ check('刻印更新仅修改现有 uniform，暂停立即熄光并保留刻痕�
 });
 check('官方金印使用40行蛇形扫描、实体金属粗糙度与现有发光通道，未扫区域没有印章',()=>{
  const scene=createStudio(canvas(),laserOptions),r=renderers.at(-1);scene.setPhase('glaze');step();const shader=potteryShader(renderedPot(r).material),fragment=shader.fragmentShader;
- assert.ok(fragment.includes('vec2(dx*5.5+0.5,(potteryY-0.47)*3.8+0.5)'));assert.ok(fragment.includes('floor(clamp(1.0-brandUV.y,0.0,1.0)*40.0)'));assert.ok(fragment.includes('float laserDirection=mod(laserRow,2.0);'));
+ assert.ok(fragment.includes('vec2(dx*4.4+0.5,(potteryY-0.47)*3.0+0.5)'));assert.ok(fragment.includes('floor(clamp(1.0-brandUV.y,0.0,1.0)*40.0)'));assert.ok(fragment.includes('float laserDirection=mod(laserRow,2.0);'));
  assert.ok(fragment.includes('mix(clamp(brandUV.x,0.0,1.0),1.0-clamp(brandUV.x,0.0,1.0),laserDirection)'));assert.ok(fragment.indexOf('stamp*=engraved;')<fragment.indexOf('engravingGold,stamp*0.96'));
  assert.ok(fragment.includes('potteryLaserProgress>=1.0?1.0:(potteryLaserProgress<=0.0?0.0:'));
  assert.ok(fragment.includes('vec3 engravingGold=vec3(0.92,0.78,0.53)'));assert.ok(fragment.includes('metalnessFactor=mix(metalnessFactor,0.60,stamp)'));assert.ok(fragment.includes('roughnessFactor=mix(roughnessFactor,0.30+0.015*cos'));assert.ok(fragment.includes('material.clearcoat=mix(material.clearcoat,0.14,stamp)'));
@@ -203,7 +203,7 @@ check('官方金印使用40行蛇形扫描、实体金属粗糙度与现有发�
 check('激光圆形光头按屏幕像素保持尺度，暖晕与细尾共用熄光遮罩，金印不自发光',()=>{
  const scene=createStudio(canvas(),laserOptions),r=renderers.at(-1);scene.setPhase('glaze');step();const shader=potteryShader(renderedPot(r).material),fragment=shader.fragmentShader,emission=fragment.slice(fragment.indexOf('totalEmissiveRadiance+=laserOn'),fragment.indexOf('#include <lights_physical_fragment>'));
  assert.equal(shader.uniforms.potteryLaserPixelRatio.value,1.8);assert.ok(fragment.includes('dFdx(brandUV.x)'));assert.ok(fragment.includes('dFdy(brandUV.y)'));assert.ok(fragment.includes('*potteryLaserPixelRatio,vec2(0.00001)'));
- assert.ok(fragment.includes('vec2 laserHeadOffset=vec2(brandUV.x-laserHeadX,laserDy)/laserPixel;'));assert.ok(fragment.includes('float laserHead=1.0-smoothstep(1.1,2.2,laserHeadDistance);'));assert.ok(fragment.includes('float laserWarmHalo=exp(-pow(laserHeadDistance/4.2,2.0));'));
+ assert.ok(fragment.includes('vec2 laserHeadOffset=vec2(brandUV.x-laserHeadX,laserDy)/laserPixel;'));assert.ok(fragment.includes('float laserHead=1.0-smoothstep(1.7,3.0,laserHeadDistance);'));assert.ok(fragment.includes('float laserWarmHalo=exp(-pow(laserHeadDistance/5.5,2.0));'));
  assert.ok(emission.includes('laserCore'));assert.ok(emission.includes('laserWarmHalo'));assert.ok(emission.includes('laserHead'));assert.ok(!emission.includes('engravingGold'));assert.ok(!emission.includes('stamp'));scene.dispose();
 });
 check('首页旋转锁定只影响展示，物理圈数持续；释放后从当前角度平滑续转',()=>{

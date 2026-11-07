@@ -131,7 +131,7 @@ export function createStudio(canvas,callbacks={}){
    float toeA=1.0-smoothstep(0.17,0.23,length(seal-vec2(-0.47,0.35)));
    float toeB=1.0-smoothstep(0.18,0.24,length(seal-vec2(0.0,0.58)));
    float toeC=1.0-smoothstep(0.17,0.23,length(seal-vec2(0.47,0.35)));
-   ${brandSeal?`vec2 brandUV=${laserEnabled?'vec2(dx*5.5+0.5,(potteryY-0.47)*3.8+0.5)':'vec2(dx*11.0+0.5,(potteryY-0.32)*7.3+0.5)'};
+   ${brandSeal?`vec2 brandUV=${laserEnabled?'vec2(dx*4.4+0.5,(potteryY-0.47)*3.0+0.5)':'vec2(dx*11.0+0.5,(potteryY-0.32)*7.3+0.5)'};
    float stamp=texture2D(potterySeal,clamp(brandUV,0.0,1.0)).a*step(0.0,brandUV.x)*step(brandUV.x,1.0)*step(0.0,brandUV.y)*step(brandUV.y,1.0);`:'float stamp=max(pad,max(toeA,max(toeB,toeC)))*(1.0-step(0.50,potteryUV.y));'}
    ${laserEnabled?`
    // 40 行蛇形路径从上向下。当前行只有扫过的部分留下金属刻痕，非整块淡入。
@@ -153,12 +153,12 @@ export function createStudio(canvas,callbacks={}){
    float laserTail=step(0.0,laserBehind)*(1.0-smoothstep(0.18,0.29,laserBehind));
    float laserCore=exp(-pow(laserDy/0.0024,2.0))*laserTail*exp(-max(0.0,laserBehind)*5.0);
    float laserHalo=exp(-pow(laserDy/0.017,2.0))*laserTail*exp(-max(0.0,laserBehind)*7.0);
-   // 用屏幕导数维持约 3–4 CSS px 的圆形光头，不能被瓶腹投影压成一段横线。
+   // 用屏幕导数维持约 5–6 CSS px 的圆形光头，不能被瓶腹投影压成一段横线。
    vec2 laserPixel=max(vec2(length(vec2(dFdx(brandUV.x),dFdy(brandUV.x))),length(vec2(dFdx(brandUV.y),dFdy(brandUV.y))))*potteryLaserPixelRatio,vec2(0.00001));
    vec2 laserHeadOffset=vec2(brandUV.x-laserHeadX,laserDy)/laserPixel;
    float laserHeadDistance=length(laserHeadOffset);
-   float laserHead=1.0-smoothstep(1.1,2.2,laserHeadDistance);
-   float laserWarmHalo=exp(-pow(laserHeadDistance/4.2,2.0));
+   float laserHead=1.0-smoothstep(1.7,3.0,laserHeadDistance);
+   float laserWarmHalo=exp(-pow(laserHeadDistance/5.5,2.0));
    `:`diffuseColor.rgb=mix(diffuseColor.rgb,${glazed?'vec3(0.46,0.34,0.18)':'diffuseColor.rgb*0.48'},stamp*${glazed?'0.82':'0.60'});`}
    ${revealEnabled?`
    // 釉线在局部坐标里微曲，随器物一起旋转；边界越过整段内外壁后精确恢复原釉面。
