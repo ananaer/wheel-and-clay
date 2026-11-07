@@ -117,6 +117,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  let observer=null,headerInset=-1;
  function observeVisibleCanvas(){
   const inset=Math.ceil(header?.getBoundingClientRect().height||84);
+  if(root.style.getPropertyValue('--home-header')!==`${inset}px`)root.style.setProperty('--home-header',`${inset}px`);
   if(typeof IntersectionObserver!=='function'){
    inView=visibilityTargets.some(target=>{const bounds=target.getBoundingClientRect();return bounds.bottom>inset&&bounds.top<window.innerHeight&&bounds.right>0&&bounds.left<window.innerWidth;});syncVisibility();return;
   }

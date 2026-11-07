@@ -226,6 +226,8 @@ export function createStudio(canvas,callbacks={}){
  const floor=mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.055}),scene,[0,0,0]);floor.rotation.x=-Math.PI/2;floor.castShadow=false;
  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=256;const sg=shadowCanvas.getContext('2d'),gradient=sg.createRadialGradient(128,128,5,128,128,128);gradient.addColorStop(0,'rgba(40,49,38,.33)');gradient.addColorStop(.45,'rgba(40,49,38,.18)');gradient.addColorStop(1,'rgba(40,49,38,0)');sg.fillStyle=gradient;sg.fillRect(0,0,256,256);
  const shadow=mesh(new THREE.PlaneGeometry(4.6,4.6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shadowCanvas),transparent:true,depthWrite:false}),scene,[.12,.005,.15]);shadow.rotation.x=-Math.PI/2;shadow.castShadow=false;
+ // 首页透明展台保留实体自身阴影，不画额外地面片，避免窄桌面窗口出现矩形裁边。
+ if(heroLaser){floor.visible=false;shadow.visible=false;}
  const guideMat=new THREE.MeshBasicMaterial({color:'#e8c8a3',transparent:true,opacity:.7,depthTest:false}),guide=new THREE.Mesh(new THREE.TorusGeometry(1,.0022,4,160),guideMat);guide.rotation.x=Math.PI/2;guide.visible=false;guide.renderOrder=4;scene.add(guide);
  function guideAt(y){invalidate();hoverHeight=P.clamp(y,0.04,1);const r=radiusAt(hoverHeight)+.009;guide.scale.set(r,r,1);guide.position.set(0,.51+.045+hoverHeight*H(),0);guide.visible=phase==='shape';}
  function hit(e){const b=canvas.getBoundingClientRect();pointer.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);raycaster.setFromCamera(pointer,camera);return raycaster.intersectObject(pot)[0];}

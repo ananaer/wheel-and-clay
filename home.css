@@ -1,7 +1,7 @@
 /* Desktop opening: one pottery stage, one statement, one action. */
 .home-intro{--home-paper:#f2eddf;--home-muted:#a19f96;--home-orange:#ffd05c;--home-signal:0;position:relative;isolation:isolate;overflow:clip;background:#101114;color:var(--home-paper);border-bottom:1px solid #343438;font-family:Arial,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
 .home-intro [hidden]{display:none!important}.home-intro *{box-sizing:border-box}.home-intro p,.home-intro h1{margin:0}.home-intro button{font:inherit;cursor:pointer;touch-action:manipulation}.home-intro button:focus-visible{outline:2px solid #ffd05c;outline-offset:5px}.home-intro button:disabled{cursor:default;opacity:.4}
-.home-shell{height:calc(100svh - 84px);min-height:620px;max-width:1800px;margin:auto;padding:0 40px;display:grid;grid-template-rows:minmax(0,1fr) 90px}
+.home-shell{height:calc(100svh - var(--home-header,84px));min-height:620px;max-width:1800px;margin:auto;padding:0 40px;display:grid;grid-template-rows:minmax(0,1fr) 90px}
 .home-main{position:relative;min-height:0;isolation:isolate}.home-copy{position:relative;z-index:2;width:56%;height:100%;display:flex;flex-direction:column;justify-content:center;padding:18px 0 27px;pointer-events:none}.home-copy>*{pointer-events:auto}
 .home-signature{display:flex;gap:23px;align-items:center;margin-bottom:34px}.home-wordmark{display:block;width:136px;height:auto}.home-intro .home-eyebrow{max-width:150px;border-left:1px solid #50493a;padding:7px 0 7px 21px;font-size:9px;line-height:1.8;font-weight:500;letter-spacing:.16em;color:#a8a397}
 .home-intro .home-title{font-size:clamp(72px,8.65vw,139px);font-weight:800;line-height:.88;letter-spacing:-.075em;white-space:nowrap;margin:0 0 35px;text-wrap:nowrap}.home-title>span,.home-title>em{display:block}.home-title em{font-style:normal;color:var(--home-orange);margin-top:8px}
@@ -18,3 +18,5 @@
 @media(prefers-reduced-motion:reduce){.home-intro *{transition:none!important}.home-enter:hover{transform:none}}
 
 .home-etch-controls{display:flex;align-items:center;gap:18px}.home-etch-status{font:9px/1.5 ui-monospace,monospace;letter-spacing:.02em;color:#96bcb5}.home-intro[data-engraving-phase=scan] .home-etch-status{color:#d7efe8}
+
+@media(max-width:1120px){.home-workpiece{top:50%;bottom:auto;height:calc(100% + 20px);max-height:72vw;transform:translateY(-50%)}}
