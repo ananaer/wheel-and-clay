@@ -9,6 +9,12 @@ check('分享明确保留模拟来源，切实时标记不能洗掉模拟历史'
  assert.match(buildShareCopy({hadSim:false},'en'),/Made in live mode/);
  assert.match(buildShareCopy({},'zh'),/轮速来源未记录/);
 });
+check('分享保留所选官方角色，旧藏品和未知角色不编造身份',()=>{
+ assert.match(buildShareCopy({hadSim:true,companionId:'8889'},'zh'),/Squeek #8889/);
+ assert.match(buildShareCopy({hadSim:false,companionId:'8890'},'en'),/Squeek #8890/);
+ assert.doesNotMatch(buildShareCopy({hadSim:true},'en'),/Squeek #/);
+ assert.doesNotMatch(buildShareCopy({hadSim:true,companionId:'9999'},'en'),/Squeek #/);
+});
 check('中英文案分别完整且包含有意义的挑战成绩',()=>{
  const zh=buildShareCopy(sample,'zh'),en=buildShareCopy(sample,'en');
  assert.match(zh,/修坯委托 · 轮廓吻合 96%/);assert.doesNotMatch(zh,/Made|Rescue|shape/);

@@ -1,3 +1,4 @@
+import {getCompanion} from './companions.js';
 /* 分享只交给用户确认：不上传图片，不调用 X 发帖接口，也不读取当前位置或账号。 */
 export const SHARE_URL='https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/';
 const shareWords={
@@ -23,8 +24,9 @@ export function buildShareCopy(record={},lang='zh'){
  const source=sim?(en?'Made in simulation.':'模拟练习作品。'):record?.hadSim===false?(en?'Made in live mode.':'实时模式作品。'):(en?'Wheel source not recorded.':'轮速来源未记录。');
  const order=record?.order,score=typeof order?.score==='number'&&Number.isFinite(order.score)&&order.score>=0&&order.score<=100?Math.round(order.score):null;
  const mode=order?.play==='repair'?(en?'Rescue a Pot':'修坯委托'):order?.play==='study'?(en?'Open practice':'临摹练习'):order?.play==='turns'||(order&&!order.play)?(en?'Twenty turns':'20 圈订单'):order?.play==='burst'?(en?'One run only':'一跑定形'):null;
+ const companion=getCompanion(record?.companionId);const muse=companion?(en?'Palette inspired by Squeek #'+companion.id+'.':'配色灵感来自 Squeek #'+companion.id+'。'):'';
  const result=mode&&score!==null?(en?`${mode} · ${score}% shape match.`:`${mode} · 轮廓吻合 ${score}%。`):'';
- return [en?'I made this in Wheel & Clay. A hamster sets the rhythm; I shape the clay.':'我在「轮间」做了一件陶器。仓鼠决定节奏，我来塑形。',result,source,en?'Make yours ↓':'来做你的下一件 ↓'].filter(Boolean).join('\n');
+ return [en?'I made this in Wheel & Clay on Squeekchain. Squeektoshi sets the rhythm; I shape the clay.':'我在 Squeekchain 社区工坊「轮间」做了一件陶器。Squeektoshi 决定节奏，我来塑形。',muse,result,source,en?'Make yours ↓':'来做你的下一件 ↓'].filter(Boolean).join('\n');
 }
 export function buildXIntent(record={},lang='zh'){
  const url=new URL('https://x.com/intent/tweet');
@@ -79,7 +81,7 @@ export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
   revision++;release();piece=null;status='';busy='';copied=false;
   try{
    if(!next?.record)throw new TypeError('Missing piece');
-   const record={hadSim:next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null};
+   const record={companionId:getCompanion(next.record.companionId)?.id||null,hadSim:next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null};
    file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record,dataUrl:next.dataUrl};
    try{nativeSupported=typeof nav.share==='function'&&typeof nav.canShare==='function'&&nav.canShare({files:[file]});}catch{nativeSupported=false;}
    try{copySupported=typeof nav.clipboard?.write==='function'&&typeof view.ClipboardItem==='function'&&(typeof view.ClipboardItem.supports!=='function'||view.ClipboardItem.supports('image/png'));}catch{copySupported=false;}

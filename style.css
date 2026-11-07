@@ -133,10 +133,9 @@ dialog[open]{animation:dialog-arrive .2s ease-out}dialog[open]::backdrop{animati
 .sound-panel .section-label{margin-bottom:0}.sound-panel input[type=range]{margin:12px 0 18px}.sound-panel .wheel-audio-option{padding-top:12px}.sound-panel-heading strong{font-size:25px}.sound-caption{min-width:58px}
 /* 陶坯旁是共同作者的线描落款；状态来自同一份动力信号。 */
 .partner-credit{position:absolute;z-index:2;left:17px;top:66px;display:flex;align-items:center;gap:8px;pointer-events:none;color:#77836c;opacity:.85}
-.partner-credit svg{width:34px;height:34px;fill:#e8e7d8;stroke:#8d997a;stroke-width:1;stroke-linecap:round;stroke-linejoin:round}.partner-credit .partner-eye{fill:#64735a;stroke:none}
 .partner-credit span{font:11px/1.5 var(--serif);display:block;color:#61735a}.partner-credit small{display:block;font:8px/1.6 var(--sans);margin-top:2px;color:#8a927d}
-.partner-credit[data-state=running] svg{stroke:#49795a}.partner-credit[data-state=unknown]{opacity:.58}
-@media(max-width:1000px){.partner-credit{left:25px;top:47px}.partner-credit svg{width:29px;height:29px}.partner-credit span{font-size:10px}.partner-credit small{font-size:7px}.sound-panel{max-height:calc(100dvh - 85px)}}
+.partner-credit[data-state=unknown]{opacity:.58}
+@media(max-width:1000px){.partner-credit{left:25px;top:47px}.partner-credit span{font-size:10px}.partner-credit small{font-size:7px}.sound-panel{max-height:calc(100dvh - 85px)}}
 @media(max-width:400px){.partner-credit{left:19px;gap:6px}.partner-credit span{font-size:9px}.partner-credit small{max-width:112px;line-height:1.45}.sound-panel{padding:16px}.sound-track{padding:5px 6px;min-height:45px}.track-name{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.sound-track{transition:none}}
 

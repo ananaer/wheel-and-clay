@@ -1,103 +1,96 @@
-# Wheel & Clay · 轮间
+# 轮间 / Wheel & Clay
 
-A small, bilingual pottery studio in the browser. Public wheel-speed data from Squeektoshi the hamster sets the rhythm; you shape, glaze, and collect the pottery.
+一只真实仓鼠为虚拟转盘提供节奏，你亲手塑造陶器。当前版本：2026-11-07（UTC+8）。
 
-**[Play Wheel & Clay](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/)**
+自由创作、九种器形和三种挑战共用同一个可编辑的三维转盘。16 种釉色与 4 种表面工艺可以自由组合，完成后留下本机作品卡。界面完整切换中文或英文，无需钱包或登录。
 
-Shape a vase, bowl, or cylinder; follow a target in open practice or a twenty-turn challenge; or repair a damaged pot within twelve turns. Choose a glaze and surface finish, save a keepsake locally, and download a PNG or open a sharing prompt. English and Chinese interfaces are available.
+首页以官方点阵仓鼠、动力环和真实三维陶器展示同一份实时／模拟信号。向下进入 Squeeks 共创区，选择三位官方 Sepolia 样例角色之一；角色配色进入实际作品，塑形保持不变，角色身份随收藏和作品卡保存。物料来源见 `BRAND-ASSETS.md`。
 
-## Interaction design
+这里的“共创角色”是所选样例的配色灵感与 ID，不表示持有该 NFT。陶器、成绩和作品卡保存在本机，不铸造 NFT、不写入链上，也不代表 Squeekchain 官方出品或背书。
 
-The interface includes a playback-linked record control, a scroll transition into the studio, clear material selection, keyboard shaping and orbit controls, and confirmation before replacing an unfinished pot. Dialogs pause game-time consumption. Capture or local-storage failures leave the current piece available to retry.
+工作台（`#studio`）、挑战工坊（`#orders`）和藏品（`#collection`）是独立视图。左侧展示仓鼠轮速和明确的模拟／实时状态；操作区只保留当前步骤需要的工具。官方物料的来源与使用边界见 `BRAND-ASSETS.md`。
 
-See the [69-item interaction review](INTERACTIONS.md) for references, options, implemented changes, browser observations and remaining device-specific checks.
+## 打开与创作
 
-## Run locally
+用普通桌面浏览器打开 `Wheel-and-Clay.html`，或通过静态网页服务访问 `index.html`。独立 HTML 的依赖已内嵌，无须安装。实时模式需要联网，模拟模式不依赖外部数据。
 
-Use Python 3 and a modern browser with WebGL enabled. There are no npm dependencies, package installation steps, or build services required. Three.js is included in `vendor/`.
+1. 首次默认实时模式；选择保存在网址和本机。模拟可选匀速、冲刺或停跑，并始终标为非实时。
+2. 按住陶器后向内或向外轻推，并保持片刻。位移决定施力强弱，形状随按压时间逐渐变化；松手即停。轮速改变塑形响应，停跑后陶轮靠惯性减速，停稳不能加工。
+3. 自由创作可选圆腹、直筒或敞口起形，调整指腹宽度并撤销／重做。精细工具支持高度滑块和收窄／拉宽按钮；画布聚焦后，上下方向键改变高度，左右键改变宽度。
+4. 完成拉坯后施釉。16 种颜色覆盖青绿、蓝、紫、粉、橘、黄、灰与黑白；光釉、哑釉、细斑釉、双色流釉分别改变表面反射或纹理，不只是更换名字。光泽滑块在所选工艺范围内微调。拖动器物观察内外壁，也可复位视角。
+5. 收藏作品会生成作品卡，保存在当前浏览器，最多保留 12 件；釉色、工艺、来源、共创角色与挑战结果随作品保存。旧作品不补造共创角色。清除浏览器数据会清空藏品。
+6. 音乐面板提供木与光、雨窗、籽间、月下小窝四首原创程序音景，选曲偏好保存在本机；首次合成通过 Worker 准备，播放中切曲淡入淡出。首次进入工作台或触碰陶器时，以这次用户手势开启原创音景；此前保持静音。手动静音、音量与转盘声偏好保存在本机，后续进入尊重静音选择。站内切页时音乐继续，网页进入后台则静音并暂停加工；浏览器未允许播放时，界面不会显示正在播放。
 
-From the repository root:
+## 挑战工坊
 
-```sh
-python3 -m http.server 8000 --bind 127.0.0.1
-```
+九种器形是弧线杯、折线杯、喇叭瓶、束口瓶、圆腹罐、梨形瓶、纺锤瓶、葫芦瓶和花口瓶。每种都有独立的可编辑半径轮廓；金色虚线提供目标参照。
 
-Open [the local studio](http://127.0.0.1:8000/). To start in English with simulated wheel power, open [English simulation](http://127.0.0.1:8000/?lang=en&mode=sim).
+| 玩法 | 起点与目标 | 结束方式 |
+| --- | --- | --- |
+| 临摹练习 | 从直筒陶坯开始，跟随目标轮廓练习 | 不限圈，满意时交付 |
+| 20 圈订单 | 从直筒陶坯开始，在有限转动中接近目标 | 提前交付，或 20 圈耗尽定形 |
+| 修坯委托 | 从局部鼓包或内陷的受损目标开始，只修坏处并保护其余 | 提前交付，或 12 圈耗尽定形；轮廓 ≥85% 且完好区保留 ≥90% 才成功 |
 
-The source uses browser ES modules, so serve the source over HTTP instead of opening `index.html` directly. The generated standalone HTML below can also be used without a development server.
+修坯每题使用确定的损伤位置和方向，界面提示向内收或向外放，实时显示损伤修复比例与完好区保留程度。初始吻合度为 69%；没有加工，或加工后又恢复原状，都不能获得修复成功。结果区分别显示修复与保留情况。旧版“一跑定形”（`burst`）仅保留历史作品兼容，不再提供挑战入口。
 
-## Build
+共同规则：
 
-```sh
-python3 build.py
-```
+- 圈数是**虚拟陶轮**的操作预算，由陶轮实际转速积分得到，不是原始传感器圈数或链上结算。仓鼠跑得快，预算消耗更快，塑形响应也更强。
+- 仓鼠停跑后陶轮惯性减速；停稳不扣圈，也不能塑形。未知信号立即冻结加工与预算，不当作仓鼠停跑。后台或其他视图暂停游戏，不在返回后追补未观察到的转动。
+- 发生实际加工后可提前交付。定形后不能再修改器形或成绩，但仍能施釉、收藏。返回自由创作保留形状并退出挑战成绩关联。
+- 轮廓吻合度来自半径的均方根误差：`100 × clamp(1 − RMS / 0.45)`。修坯额外比较未受损区相对初始陶坯的偏差；修坏其他地方不能靠全局分数掩盖。
+- 未做任何加工的局不计完成度。结果包含器形、模式、成绩、圈数、已知跑动转为静止的次数及模拟来源；只要本局用过模拟，始终标记模拟练习。不设联网排行榜。
 
-The build uses only the Python standard library. It creates:
+## 数据与边界
 
-- `Wheel-and-Clay.html`: a self-contained page with styles, application code, and Three.js embedded.
-- `Wheel-and-Clay.zip`: a local package of the project and standalone page.
-- `qa/`: clearly labelled fixtures for offline, timeout, missing WebGL, and simulated hardware responses. These fixtures are for local checks and must not be published as live data.
+- 每 8 秒只读 `https://api.squeekchain.com/v1/status`，超时 7 秒；RPM 为 `rpmMilli / 1000`。
+- 只接受新鲜、硬件来源、已知设备状态的有效转速。有效零速显示停跑；断线、过期、非硬件来源、缺少转速显示未知，不自动替换成模拟。
+- 连接详情显示 HTTP、耗时、读取成功时间和硬件采样时间。失败后自动重试，也可手动刷新。实时接口曾在本机返回 HTTP 200 与硬件零速，也出现过超时、代理连接失败及 Cloudflare 验证页，不能承诺所有网络下持续可用。
+- 验收尚未观察到真实仓鼠跑动。模拟运动录影始终保留模拟标记；硬件零速只能证明当时传感器返回零速，不能证明仓鼠睡着。
+- 近 7 日统计若有带时间戳的正转速峰值，可显示“曾有跑动”。它不是最近一次跑动时间或睡眠起点；统计不可用时不生成记录，也不影响实时接口。
+- 陶轮惯性、塑形作用与预算属于游戏规则，不是物理测量。无钱包、签名、交易、账户、第三方统计或代用户发布功能。
 
-These outputs are ignored by Git. Simulation and the interface do not need a network connection after the page is loaded. Live mode still requires the public API.
+## 实现与验证
 
-## Test
+Three.js 实时旋转体使用 129 个纵向控制点和 144 个圆周分段，包含内壁、圆唇和闭合底部。材质、摄影棚反射、金属转盘和接触阴影实时渲染，没有器物背景图或预渲染状态图。转盘刻度和金色零位转动，固定黄铜指针及器物上的官方仓鼠轮廓窑印帮助辨认速度与停止；金色窑印是本项目的视觉延展。
 
-The tests use Node.js built-ins and perform no live API requests. Use Node.js 22.7 or later; this source was checked with Node.js 24.
+`engine.js` 提供可离线测试的形变、动力、修坯判定与撤销规则；`glazes.js` 定义 16 种釉色和 4 种工艺；`core.js` 归一化接口。Three.js 使用既有本地副本，许可证保留在 `vendor/THREE-LICENSE.txt`，没有新增安装依赖。
 
 ```sh
 node tests/test_engine.cjs
 node tests/test_glazes.mjs
 node tests/test_audio_activity.mjs
 node tests/test_share.mjs
+node tests/test_companions.mjs
+node tests/test_preview_rendering.mjs
+node --check app.js
+node --check scene.js
+node --check orders.js
+python3 build.py
 ```
 
-Each script prints its passing count and exits with a nonzero status on failure. They cover shaping, wheel inertia, challenge accounting, signal validation, glaze parameters, synthesized audio and audio permissions, activity evidence, and share payloads. WebGL rendering, pointer interaction, and native browser sharing also need browser checks.
+浏览器实测和截图见 `QA.md`、`qa/`；当前引擎测试覆盖九题在慢速、匀速和冲刺下的真实施力修复，以及无加工、错误方向、伤及完好区、停跑和断线。`qa/wheel-motion.gif`、`qa/hamster-connection.gif` 及对应 MP4 是模拟模式运行记录，不是硬件跑动录像。
 
-## LIVE, SIM, and turn counts
+创作参考 [Let's Create! Pottery](https://potterygame.com/) 的手动塑形与施釉；网页布局、模型、代码与仓鼠动力规则为本项目制作，未复制参考站素材。
 
-- **LIVE** reads public hardware status from `https://api.squeekchain.com/v1/status` every eight seconds. The interface also reads public activity statistics to show recent evidence of movement. Requests omit credentials.
-- **SIM** provides labelled, local steady, sprint, and rest states. A piece that used simulation remains marked as simulated even if the player later switches to LIVE.
-- **Unknown is not zero.** Missing, stale, invalid, or non-hardware readings are shown as unknown. An unknown signal pauses shaping and challenge consumption; it is not treated as a resting hamster. A valid hardware zero is a distinct state, and the virtual pottery wheel coasts to rest.
-- **Hardware count is separate.** Connection details show the accepted work-event count within the reporting counter epoch and estimated device-day distance (the device day starts at 12:00 UTC). An accepted magnet passage is a work event, not proof of one complete animal-driven revolution.
-- **Game turns are virtual pottery-wheel credits.** They are calculated by integrating the smoothed virtual wheel speed over active game time. They are not a hardware revolution counter, a count of raw sensor pulses, or a physical measurement of the hamster's actual wheel. The shaping response and challenge budgets are game rules.
+## 部署与交付
 
-The app is a public-data, read-only experience. It does not connect a wallet, request signatures, submit transactions, or control hardware. It is an interactive pottery studio, not a hamster video stream.
+当前交付包含独立 HTML、源码 ZIP 和已部署的 **Cloudflare 独立静态 Worker**。公开试玩：[https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev)。已在公开站实际完成修坯、施釉、收藏和刷新恢复。源码中的 `qa/*.html` 是测试夹具，不作为公开游戏页面发布。游戏不需要常驻本机服务；本机 `127.0.0.1` 预览仅用于验收。
 
-Up to twelve pieces and interface preferences are stored in the current browser's local storage. Clearing that browser's data removes them. Exporting or sharing happens only through the player's controls; the X action opens a compose prompt with the public play URL and a short caption.
+上述公开站验收记录属于既有上线版本。本次动力室首页与 Squeeks 共创改版的上线状态，以对应发布版本、打包哈希和公开复验记录为准；本地改好不等于已经发布。
 
-## Prepare static hosting
+公开试玩可使用 Worker 的 `workers.dev` 地址。官方 Direct 提交还要求可控制 DNS 的归属证明，以及官方生成的页面标签和公开 GitHub README 验证行；这是审核归属要求，不是游戏运行要求，也不意味着必须购买新域名。正式提交以 [官方 Code 页面](https://squeekchain.com/genesis/code) 当次生成的字段和验证内容为准。
 
-After building, prepare the static hosting directory:
+## 原创音景《木与光》
 
-```sh
-python3 deploy/prepare.py
-```
+58 BPM、约 50 秒循环的原创柔钢琴／木质音景：低音区稀疏旋律、柔和木音与缓慢铺开的空气和弦，避免强拍催促塑形。浏览器直接生成 PCM，无音频 CDN 或第三方曲目。跑轮匀速时每四拍轻敲，冲刺时每两拍轻敲；停稳或未知信号去掉这层，转盘声随速度淡入淡出。默认音量 36%，首次进入工作台或触碰陶器的手势开启，记住用户手动静音。只有实际 AudioContext 处于 running 状态，界面才显示播放中；拒绝或中断播放后可以重试。
 
-This checks the bundled page and writes exactly `index.html`, `THREE-LICENSE.txt`, and `_headers` into `deploy/public/`. It does not authenticate or deploy. The included `deploy/wrangler.toml` describes a Cloudflare Workers static-assets deployment; any hosting credentials are supplied outside this repository. The app can also be served by another static host.
+`node render_music_preview.mjs` 用同一生成器和默认音量导出 `qa/pottery-music-preview.wav`，并记录 `qa/pottery-music-metrics.json`。音频与活动测试通过 14/14，覆盖波形峰值、循环接缝和播放状态；播放状态单元测试使用受控音频上下文，不能替代真实浏览器或主观听感验收。
 
-## Source map
+## 首页与分享
 
-| Files | Purpose |
-| --- | --- |
-| `index.html`, `style.css`, `app.js` | Studio markup, styles, and application state |
-| `core.js`, `activity.js` | Public signal validation and activity evidence |
-| `engine.js`, `scene.js` | Pottery geometry, interaction, wheel dynamics, and WebGL rendering |
-| `orders.js`, `glazes.js` | Practice, challenges, repair commissions, and materials |
-| `audio.js` | Four original synthesized soundscapes, asynchronous PCM preparation, and wheel audio |
-| `home.js`, `home.css` | Welcome page |
-| `share.js`, `share.css` | Keepsake download and share controls |
-| `tests/` | Dependency-free Node.js checks |
-| `build.py`, `deploy/` | Local packaging and static-host preparation |
+首页直接消费工作台同一份实时／模拟信号，显示实测或模拟轮速。模拟模式可切跑动与休息；有效零速与未知信号分开显示，陶轮可以在输入归零后继续短暂惯性减速。点击“开始共创”或自然下滑，先进入三位 Sepolia 样例的配色选择，再进入工作台。换配色不重置器形；随后仍可手动施釉。顶部导航、音乐和语言开关在滚动时保留；挑战、藏品仍为独立页面。
 
-## Third-party license
+首页陶器与当前作品同步，不消耗挑战预算。陶器和动力环都离开扣除固定导航后的可视区域时，首页动画暂停；工作台离屏、被对话框遮挡或页面进入后台时暂停加工与挑战计数。
 
-The bundled Three.js distribution is covered by its MIT license in [`vendor/THREE-LICENSE.txt`](vendor/THREE-LICENSE.txt). Preserve that notice when distributing it. No project-wide license has been added for the original Wheel & Clay code; the Three.js license applies to Three.js itself.
-
-
-## Sound and sharing
-
-The record shelf offers four original arrangements: Wood & Light, Rain at the Window, Between the Seeds, and Moonlit Nest. A local Blob Worker prepares audio without blocking the interface; no audio files are downloaded. Selection preserves pause preferences and crossfades when playing. Hosts that add a Content Security Policy must permit `worker-src blob:`.
-
-On supported devices, **Share with image** passes the PNG, caption and public URL to the system share sheet. **Copy image** writes a PNG to the clipboard; the player can then paste it in X. The ordinary X compose link only prefills text and a URL, and cannot attach a local image. Available controls depend on browser support; download remains available. No automatic posting or media upload is performed.
-
-The homepage presents Squeektoshi and the player as co-creators, with a scroll-driven pottery camera and explicit live/simulated/unknown states. Camera movement is a material preview, not a claim that the hardware wheel is currently moving. The pottery remains a local creation, not an NFT or an on-chain asset.
+收藏后可下载 1200×1500 作品卡，包含器物、所选配色伙伴、Sepolia 样例标识、模拟／实时来源和成绩（如有），并打开带文案与正式试玩链接的 X 入口。旧作品不会补造未记录的角色身份。桌面浏览器需要用户手动附上 PNG 并确认发布；支持文件分享的设备提供系统分享按钮。不自动上传、不读取账号、不代发。

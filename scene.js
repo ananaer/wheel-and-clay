@@ -3,14 +3,17 @@ import {getGlaze,getSurface,materialFor} from './glazes.js';
 
 /* 真正的可编辑旋转体，不使用预渲染器物图片。 */
 export function createStudio(canvas,callbacks={}){
- const P=window.Pottery,scene=new THREE.Scene();
+ const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
- renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.setClearColor('#eae8e1');
+ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=!presentationOnly;renderer.setClearColor(callbacks.background||'#eae8e1');
  const camera=new THREE.PerspectiveCamera(33,1,.05,60),look=new THREE.Vector3(0,1.67,0),clock=new THREE.Clock(),raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
+ let sceneReady=false,drawing=false,needsRender=true,needsShadow=true;
  let values=P.profile(),kind='vase',phase='shape',glaze='jade',surface='glossy',finish=.72,rpm=0,targetRpm=18,angle=0,drag=null,orbit=.28,tilt=.24,visible=true,disposed=false,frame=0,elapsed=0,changed=true,hoverHeight=.55,brushRadius=.13;
+ // 首页预览只在画面变化时绘制；工作台仍保留连续物理时钟。
+ function invalidate(shadow=false){needsRender=true;needsShadow ||= shadow;if(presentationOnly&&sceneReady&&visible&&!disposed&&!drawing&&!frame)frame=requestAnimationFrame(draw);}
  const H=()=>kind==='bowl'?1.78:P.HEIGHT;
- const setCamera=()=>{const distance=7.5;camera.position.set(Math.sin(orbit)*distance,1.67+Math.sin(tilt)*distance,Math.cos(orbit)*distance);camera.lookAt(look);};setCamera();
+ const setCamera=()=>{const distance=7.5;camera.position.set(Math.sin(orbit)*distance,1.67+Math.sin(tilt)*distance,Math.cos(orbit)*distance);camera.lookAt(look);invalidate();};setCamera();
  const room=new THREE.Scene();room.background=new THREE.Color('#7f827a');
  const walls=new THREE.Mesh(new THREE.BoxGeometry(30,20,30),new THREE.MeshBasicMaterial({color:'#303b37',side:THREE.BackSide}));room.add(walls);
  function softbox(p,s,color,power){const m=new THREE.Mesh(new THREE.PlaneGeometry(...s),new THREE.MeshBasicMaterial({color:new THREE.Color(color).multiplyScalar(power),side:THREE.DoubleSide}));m.position.set(...p);m.lookAt(0,1,0);room.add(m);}
@@ -60,11 +63,14 @@ export function createStudio(canvas,callbacks={}){
  const ceramic=new THREE.MeshPhysicalMaterial({color:'#276f62',roughness:.15,metalness:.04,clearcoat:1,clearcoatRoughness:.11,bumpMap:bump,bumpScale:.004,envMapIntensity:1.05,side:THREE.FrontSide});
  // 纹理锁在陶器局部坐标：窑变与小爪印会绕到侧面、背面，不能靠静止高光假装旋转。
  const surfaceHeight={value:P.HEIGHT},surfaceMode={value:0},glazeAccent={value:new THREE.Color(getGlaze(glaze).accent)};
+ // 品牌概念可指定原始透明 SVG 为窑印；不传时保留工作台现有爪印。
+ const brandSeal=callbacks.sealUrl?new THREE.TextureLoader().load(callbacks.sealUrl,()=>invalidate()):null;
  function turningSurface(mat,glazed){mat.onBeforeCompile=shader=>{
   shader.uniforms.potteryHeight=surfaceHeight;
+  if(brandSeal)shader.uniforms.potterySeal={value:brandSeal};
   if(glazed){shader.uniforms.potterySurface=surfaceMode;shader.uniforms.potteryAccent=glazeAccent;}
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;\nuniform float potteryHeight;').replace('#include <begin_vertex>','#include <begin_vertex>\npotteryUV=uv;\npotteryY=position.y/potteryHeight;');
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'' )).replace('#include <color_fragment>',`#include <color_fragment>
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'' )).replace('#include <color_fragment>',`#include <color_fragment>
    float theta=potteryUV.x*6.2831853;
    float clayFlow=sin(theta*3.0+sin(potteryY*7.0)*0.9)*0.6+sin(theta*5.0-potteryY*9.0)*0.4;
    diffuseColor.rgb*=1.0+clayFlow*${glazed?'0.13':'0.085'};
@@ -106,14 +112,15 @@ export function createStudio(canvas,callbacks={}){
    float toeA=1.0-smoothstep(0.17,0.23,length(seal-vec2(-0.47,0.35)));
    float toeB=1.0-smoothstep(0.18,0.24,length(seal-vec2(0.0,0.58)));
    float toeC=1.0-smoothstep(0.17,0.23,length(seal-vec2(0.47,0.35)));
-   float stamp=max(pad,max(toeA,max(toeB,toeC)))*(1.0-step(0.50,potteryUV.y));
+   ${brandSeal?`vec2 brandUV=vec2(dx*11.0+0.5,(potteryY-0.32)*7.3+0.5);
+   float stamp=texture2D(potterySeal,clamp(brandUV,0.0,1.0)).a*step(0.0,brandUV.x)*step(brandUV.x,1.0)*step(0.0,brandUV.y)*step(brandUV.y,1.0);`:'float stamp=max(pad,max(toeA,max(toeB,toeC)))*(1.0-step(0.50,potteryUV.y));'}
    diffuseColor.rgb=mix(diffuseColor.rgb,${glazed?'vec3(0.46,0.34,0.18)':'diffuseColor.rgb*0.48'},stamp*${glazed?'0.82':'0.60'});
   `);
   shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
    roughnessFactor=clamp(roughnessFactor*(1.0+clayFlow*${glazed?'0.35':'0.18'}),0.06,1.0);
    ${glazed?'roughnessFactor=clamp(roughnessFactor+mineralSpot*0.20+glazeEdge*0.08,0.06,1.0);':''}
   `);
- };mat.customProgramCacheKey=()=>glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2';}
+ };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'');}
  turningSurface(clay,false);turningSurface(ceramic,true);
  const SEG=144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
  for(let row=0;row<RINGS;row++)for(let j=0;j<=SEG;j++){const at=row*(SEG+1)+j;uv[at*2]=j/SEG;uv[at*2+1]=row/(RINGS-1);if(row<RINGS-1&&j<SEG){const next=at+SEG+1;indices.push(at,at+1,next,next,at+1,next+1);}}
@@ -121,7 +128,7 @@ export function createStudio(canvas,callbacks={}){
  const pot=mesh(geometry,clay,rotor,[0,.51,0]);
  let targetActive=false;
  const targetGuide=new THREE.LineSegments(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({color:'#866130',dashSize:.04,gapSize:.03,transparent:true,opacity:.95,depthTest:false,toneMapped:false}));targetGuide.visible=false;targetGuide.renderOrder=6;scene.add(targetGuide);
- function setTarget(profile){targetActive=!!profile;targetGuide.visible=targetActive&&phase==='shape';if(!profile)return;const points=[];for(const sign of [-1,1])for(const offset of [-.004,0,.004])for(let i=0;i<P.COUNT-1;i++){points.push(new THREE.Vector3(sign*profile[i]+offset,.555+i/(P.COUNT-1)*P.HEIGHT,0),new THREE.Vector3(sign*profile[i+1]+offset,.555+(i+1)/(P.COUNT-1)*P.HEIGHT,0));}targetGuide.geometry.dispose();targetGuide.geometry=new THREE.BufferGeometry().setFromPoints(points);targetGuide.computeLineDistances();}
+ function setTarget(profile){invalidate();targetActive=!!profile;targetGuide.visible=targetActive&&phase==='shape';if(!profile)return;const points=[];for(const sign of [-1,1])for(const offset of [-.004,0,.004])for(let i=0;i<P.COUNT-1;i++){points.push(new THREE.Vector3(sign*profile[i]+offset,.555+i/(P.COUNT-1)*P.HEIGHT,0),new THREE.Vector3(sign*profile[i+1]+offset,.555+(i+1)/(P.COUNT-1)*P.HEIGHT,0));}targetGuide.geometry.dispose();targetGuide.geometry=new THREE.BufferGeometry().setFromPoints(points);targetGuide.computeLineDistances();}
  const scratches=new Float32Array(P.COUNT);
  function radiusAt(h){const n=P.clamp(h,0,1)*(P.COUNT-1),i=Math.min(P.COUNT-2,Math.floor(n)),u=n-i;return values[i]*(1-u)+values[i+1]*u;}
  function rebuild(){
@@ -145,18 +152,30 @@ export function createStudio(canvas,callbacks={}){
  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=256;const sg=shadowCanvas.getContext('2d'),gradient=sg.createRadialGradient(128,128,5,128,128,128);gradient.addColorStop(0,'rgba(40,49,38,.33)');gradient.addColorStop(.45,'rgba(40,49,38,.18)');gradient.addColorStop(1,'rgba(40,49,38,0)');sg.fillStyle=gradient;sg.fillRect(0,0,256,256);
  const shadow=mesh(new THREE.PlaneGeometry(4.6,4.6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shadowCanvas),transparent:true,depthWrite:false}),scene,[.12,.005,.15]);shadow.rotation.x=-Math.PI/2;shadow.castShadow=false;
  const guideMat=new THREE.MeshBasicMaterial({color:'#e8c8a3',transparent:true,opacity:.7,depthTest:false}),guide=new THREE.Mesh(new THREE.TorusGeometry(1,.0022,4,160),guideMat);guide.rotation.x=Math.PI/2;guide.visible=false;guide.renderOrder=4;scene.add(guide);
- function guideAt(y){hoverHeight=P.clamp(y,0.04,1);const r=radiusAt(hoverHeight)+.009;guide.scale.set(r,r,1);guide.position.set(0,.51+.045+hoverHeight*H(),0);guide.visible=phase==='shape';}
+ function guideAt(y){invalidate();hoverHeight=P.clamp(y,0.04,1);const r=radiusAt(hoverHeight)+.009;guide.scale.set(r,r,1);guide.position.set(0,.51+.045+hoverHeight*H(),0);guide.visible=phase==='shape';}
  function hit(e){const b=canvas.getBoundingClientRect();pointer.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);raycaster.setFromCamera(pointer,camera);return raycaster.intersectObject(pot)[0];}
- function down(e){if(e.button!==0||drag||e.isPrimary===false)return;const found=hit(e);if(phase==='shape'&&!found)return;if(phase==='shape'&&(rpm<.5||callbacks.canSculpt?.()===false)){callbacks.onBlocked?.();return;}e.preventDefault();canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);document.body.dataset.dragging='true';const local=found?pot.worldToLocal(found.point.clone()):null;drag={id:e.pointerId,x:e.clientX,y:e.clientY,originX:e.clientX,reach:Math.max(60,canvas.getBoundingClientRect().height*.18),pressure:0,target:0,didSculpt:false,center:local?P.clamp((local.y-.045)/H(),.06,1):.5,sign:pointer.x<0?-1:1};if(phase==='shape'){guideAt(drag.center);callbacks.onStrokeStart?.();}}
- function move(e){if(drag&&e.pointerId!==drag.id)return;if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;if(phase==='shape'){drag.target=P.touchTarget((e.clientX-drag.originX)*drag.sign,drag.reach);}else{orbit-=dx*.006;tilt=P.clamp(tilt+dy*.004,-.02,.9);setCamera();}}else if(phase==='shape'){const found=hit(e);if(found){const local=pot.worldToLocal(found.point.clone());guideAt((local.y-.045)/H());}else guide.visible=false;}}
+ function down(e){if(presentationOnly||animatedPreview)return;if(e.button!==0||drag||e.isPrimary===false)return;const found=hit(e);if(phase==='shape'&&!found)return;if(phase==='shape'&&(rpm<.5||callbacks.canSculpt?.()===false)){callbacks.onBlocked?.();return;}e.preventDefault();canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);document.body.dataset.dragging='true';const local=found?pot.worldToLocal(found.point.clone()):null;drag={id:e.pointerId,x:e.clientX,y:e.clientY,originX:e.clientX,reach:Math.max(60,canvas.getBoundingClientRect().height*.18),pressure:0,target:0,didSculpt:false,center:local?P.clamp((local.y-.045)/H(),.06,1):.5,sign:pointer.x<0?-1:1};if(phase==='shape'){guideAt(drag.center);callbacks.onStrokeStart?.();}}
+ function move(e){if(presentationOnly||animatedPreview)return;if(drag&&e.pointerId!==drag.id)return;if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;if(phase==='shape'){drag.target=P.touchTarget((e.clientX-drag.originX)*drag.sign,drag.reach);}else{orbit-=dx*.006;tilt=P.clamp(tilt+dy*.004,-.02,.9);setCamera();}}else if(phase==='shape'){const found=hit(e);if(found){const local=pot.worldToLocal(found.point.clone());guideAt((local.y-.045)/H());}else guide.visible=false;}}
  function shapeUnderTouch(dt){if(!drag||phase!=='shape'||rpm<.5)return;const touch=P.stepTouch(drag.pressure,drag.target,dt);drag.pressure=touch.pressure;if(Math.abs(touch.delta)>1e-7&&callbacks.onSculpt?.(drag.center,touch.delta,brushRadius,rpm)){drag.didSculpt=true;const n=Math.round(drag.center*(P.COUNT-1));scratches[n]=Math.min(2,scratches[n]+Math.abs(touch.delta)*1.2);guideAt(drag.center);}guideMat.opacity=.35+Math.abs(drag.pressure)*.5;}
  function up(e){if(!drag||(e&&e.pointerId!==drag.id))return;const previous=drag;drag=null;if(canvas.hasPointerCapture(previous.id))canvas.releasePointerCapture(previous.id);document.body.dataset.dragging='false';guideMat.opacity=.7;if(phase==='shape'&&previous.didSculpt)callbacks.onStrokeEnd?.();}
  canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('lostpointercapture',up);canvas.addEventListener('pointerleave',()=>{if(!drag)guide.visible=false;});
- const resizer=new ResizeObserver(()=>{const b=canvas.getBoundingClientRect();renderer.setSize(b.width,b.height,false);camera.aspect=b.width/b.height;camera.updateProjectionMatrix();});resizer.observe(canvas);
+ const resizer=new ResizeObserver(()=>{const size=presentationOnly?{width:canvas.clientWidth,height:canvas.clientHeight}:canvas.getBoundingClientRect(),width=size.width,height=size.height;if(!width||!height)return;renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();invalidate();});resizer.observe(canvas);
  rebuild();let ready=false;
- function draw(){if(disposed)return;frame=requestAnimationFrame(draw);const dt=Math.min(clock.getDelta(),.1);if(!visible)return;elapsed+=dt;rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;rotor.rotation.y=angle;targetGuide.rotation.y=orbit;if(changed)rebuild();renderer.render(scene,camera);canvas.dataset.wheelAngle=(angle%(Math.PI*2)).toFixed(5);canvas.dataset.motorRpm=rpm.toFixed(3);canvas.dataset.touchPressure=(drag?.pressure||0).toFixed(4);canvas.dataset.middleRadius=radiusAt(.5).toFixed(6);callbacks.onTick?.(rpm,dt);if(!ready){ready=true;callbacks.onReady?.();}}
- draw();
+ function recordFrame(){canvas.dataset.wheelAngle=(angle%(Math.PI*2)).toFixed(5);canvas.dataset.motorRpm=rpm.toFixed(3);canvas.dataset.touchPressure=(drag?.pressure||0).toFixed(4);canvas.dataset.middleRadius=radiusAt(.5).toFixed(6);if(!ready){ready=true;callbacks.onReady?.();}}
+ function drawPresentation(){
+  frame=0;if(disposed||!visible)return;drawing=true;
+  let animate=false;
+  try{
+   // 返回 true 可让调用方的镜头缓动继续；停止后不再请求空白帧。
+   animate=callbacks.onTick?.(0,Math.min(clock.getDelta(),.1))===true;
+   if(changed){rebuild();needsRender=true;needsShadow=true;}
+   if(needsRender){needsRender=false;renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;targetGuide.rotation.y=orbit;renderer.render(scene,camera);recordFrame();}
+  }finally{drawing=false;if(!disposed&&visible&&(animate||needsRender)&&!frame)frame=requestAnimationFrame(draw);}
+ }
+ function draw(){if(presentationOnly){drawPresentation();return;}frame=0;if(disposed||animatedPreview&&!visible)return;frame=requestAnimationFrame(draw);const dt=Math.min(clock.getDelta(),.1);if(!visible)return;elapsed+=dt;rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;rotor.rotation.y=angle;targetGuide.rotation.y=orbit;if(changed)rebuild();renderer.render(scene,camera);canvas.dataset.wheelAngle=(angle%(Math.PI*2)).toFixed(5);canvas.dataset.motorRpm=rpm.toFixed(3);canvas.dataset.touchPressure=(drag?.pressure||0).toFixed(4);canvas.dataset.middleRadius=radiusAt(.5).toFixed(6);callbacks.onTick?.(rpm,dt);if(!ready){ready=true;callbacks.onReady?.();}}
+ sceneReady=true;if(presentationOnly)invalidate(true);else draw();
  function setMaterial(){
+  invalidate(true);
   const spec=materialFor(glaze,surface,finish);
   ceramic.color.set(spec.color);glazeAccent.value.set(spec.accent);surfaceMode.value=spec.mode;
   for(const key of ['roughness','clearcoat','clearcoatRoughness','metalness','bumpScale','envMapIntensity'])ceramic[key]=spec[key];
@@ -164,16 +183,17 @@ export function createStudio(canvas,callbacks={}){
   canvas.dataset.glaze=glaze;canvas.dataset.surface=surface;canvas.dataset.material=phase==='shape'?'clay':'ceramic';
  }
  return {
-  setProfile(v,type=kind){values=v.slice();kind=type;changed=true;},setRpm(v){targetRpm=Number.isFinite(v)?P.clamp(v,0,90):0;},get rpm(){return rpm;},get frame(){return frame;},
-  setTarget,setPhase(next){up();phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;},
-  setPresentationView(nextOrbit,nextTilt){if(Number.isFinite(nextOrbit))orbit=nextOrbit;if(Number.isFinite(nextTilt))tilt=P.clamp(nextTilt,-.02,.9);setCamera();},
+  setProfile(v,type=kind){values=v.slice();kind=type;changed=true;invalidate(true);},setRpm(v){targetRpm=Number.isFinite(v)?P.clamp(v,0,90):0;},get rpm(){return rpm;},get frame(){return frame;},
+  setTarget,setPhase(next){up();phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
+  setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
   orbitView(deltaOrbit=0,deltaTilt=0){if(Number.isFinite(deltaOrbit))orbit+=deltaOrbit;if(Number.isFinite(deltaTilt))tilt=P.clamp(tilt+deltaTilt,-.02,.9);setCamera();},
-  resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){visible=v;clock.getDelta();if(!v){up();guide.visible=false;}},
+  resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const wasVisible=visible;visible=!!v;if((presentationOnly||animatedPreview)&&wasVisible===visible)return;clock.getDelta();if(!visible){up();guide.visible=false;if(presentationOnly||animatedPreview){cancelAnimationFrame(frame);frame=0;}}else if(presentationOnly)invalidate();else if(animatedPreview&&!frame)frame=requestAnimationFrame(draw);},
   capture(width=1000,height=1100){
-   const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible;
-   try{guide.visible=false;orbit=.28;tilt=.24;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed)rebuild();renderer.render(scene,camera);return canvas.toDataURL('image/png');}
-   finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderer.render(scene,camera);}
+   const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible,oldRotor=rotor.rotation.y;
+   // 导出只调整展示朝向，不写入物理 angle；无论截图成败都恢复正在运行的转盘。
+   try{guide.visible=false;orbit=.28;tilt=.24;rotor.rotation.y=0;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed){rebuild();needsShadow=true;}if(presentationOnly){renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;}renderer.render(scene,camera);return canvas.toDataURL('image/png');}
+   finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;rotor.rotation.y=oldRotor;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderer.render(scene,camera);}
   },
-  dispose(){disposed=true;cancelAnimationFrame(frame);resizer.disconnect();renderer.dispose();env.dispose();scene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});bump.dispose();plateTex.dispose();dialTexture.dispose();},
+  dispose(){disposed=true;cancelAnimationFrame(frame);resizer.disconnect();renderer.dispose();env.dispose();scene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});bump.dispose();plateTex.dispose();dialTexture.dispose();brandSeal?.dispose();},
  };
 }

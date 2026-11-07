@@ -1,162 +1,178 @@
-/* 首页是器物与材质预览，摄影机缓慢移动；它不伪造跑轮动力。 */
-export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{}}={}){
+/* 首页只消费产品统一信号。按钮向应用发请求，不在这里生成模拟或实时数据。 */
+export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onModeChange=()=>{},onSimChange=()=>{}}={}){
  if(!root)throw new Error('Home root is required');
- const homeWords={
-  eyebrow:['Squeekchain · 一鼠驱动','SQUEEKCHAIN · HAMSTER POWERED'],
-  title:['把脚步，\n留成器物。','Little steps.\nLasting things.'],
-  lead:['一只仓鼠，决定整个工坊的节奏。\n形状，留给你。','One real hamster sets the whole studio’s rhythm.\nThe shape is up to you.'],
-  enter:['先练一件','Make a practice piece'],practice:['模拟动力 · 随时可玩','Simulation · always playable'],
-  live:['跟着仓鼠做','Follow the live wheel'],
-  signalPreview:['进入后连接真实跑轮','Connect to the live wheel when you enter'],signalUnknown:['等待实时跑轮信号','Waiting for a live wheel signal'],signalRest:['跑轮此刻静止 · 可以先练习','The wheel is resting · practise meanwhile'],signalRun:['跑轮此刻在动','The real wheel is moving'],
-  preview:['器物与釉面预览','A STUDY IN FORM & GLAZE'],previewLabel:['陶器材质预览','Pottery material preview'],
-  glazeLabel:['选择预览釉色','Choose a preview glaze'],
-  jade:['翡翠流釉','Jade flow'],ivory:['象牙细斑','Speckled ivory'],coral:['珊瑚光釉','Coral gloss'],
-  previewLoading:['光，慢慢落在陶器上。','Let the light settle.'],previewUnavailable:['器物预览需要图形加速。','The pottery preview needs graphics acceleration.'],
-  rhythm:['它给节奏','His rhythm'],touch:['你给形状','Your touch'],keep:['留下一件','A piece to keep'],
-  scroll:['向下，走进工作室','Scroll into the studio'],scrollLabel:['滚动到工作台，保留当前动力模式','Scroll to the studio, keeping the current power mode'],
-  edition:['轮间 · 仓鼠陶艺工作室','WHEEL & CLAY · POTTERY STUDIO'],
-  storyTitle:['整个工坊。\n就这一位动力师。','One small hamster.\nThe whole power station.'],
-  powerBy:['动力师','POWERED BY'],shapeBy:['陶艺师','SHAPED BY'],you:['你','You'],
-  footprint:['脚步','FOOTSTEPS'],verifiedWork:['有效工作','VALID WORK'],potteryWheel:['陶轮','POTTERY WHEEL'],
-  culture:['一只仓鼠撑起一条链。顺便，开了间陶艺工坊。','One hamster. One chain. A pottery studio on the side.'],
-  community:['Squeekchain 社区作品\n不催仓鼠。开工随缘。','A Squeekchain community creation\nNo deadlines. He is a hamster.'],
-  signalSim:['模拟动力 · 仓鼠今天不加班','Simulated power · the hamster has the day off'],
-  makerWaiting:['真实信号尚未确认','Live signal not confirmed'],makerRest:['已连接 · 跑轮静止','Connected · wheel at rest'],makerRun:['已连接 · 跑轮正在转动','Connected · wheel moving'],makerPreview:['进入后连接真实跑轮','Connect when you enter'],
-  caption:['16 种釉色，4 种表面工艺。\n这一件，由你决定。','16 colours. 4 surface finishes.\nThe next piece is yours.']
+ const words={
+  eyebrow:['Squeektoshi · 全厂唯一动力师','Squeektoshi · Chief of power'],
+  title:['一只仓鼠。','One hamster.'],titleAccent:['整间工坊。','A whole studio.'],
+  lead:['它决定什么时候开工。\n你决定这块泥变成什么。','He decides when the studio runs.\nYou decide what the clay becomes.'],
+  sourceLabel:['选择动力来源','Choose the power source'],live:['实时','Live'],sim:['模拟','Simulate'],
+  simulationLabel:['控制模拟动力','Control simulated power'],run:['跑动','Run'],rest:['休息','Rest'],
+  simSignal:['模拟动力 · 不代表真实仓鼠状态','Simulated power · not the real hamster'],
+  liveRunning:['实时已连接 · 跑轮正在转动','Live connection · the wheel is moving'],
+  liveIdle:['实时已连接 · 跑轮暂时静止','Live connection · the wheel is at rest'],
+  unknown:['等待实时信号 · 动力暂不可用','Waiting for live data · power unavailable'],
+  simUnknown:['模拟动力尚未就绪','Simulation is not ready yet'],
+  enter:['开始共创','Start creating together'],
+  markLabel:['Squeekchain 官方仓鼠标志与动力轮盘','Official Squeekchain hamster mark and power wheel'],
+  simRpm:['模拟轮速','Simulated speed'],liveRpm:['实测轮速','Measured speed'],rpmUnit:['转 / 分','RPM'],
+  workshopRunning:['工坊开工中','The studio is running'],workshopIdle:['工坊休息中','The studio is resting'],workshopUnknown:['等待跑轮信号','Waiting for wheel data'],workshopCoasting:['陶轮正在减速','Pottery wheel coasting'],
+  piece:['你的器物','Your piece'],pieceLabel:['由跑轮动力驱动的陶器','A pottery piece driven by wheel power'],
+  loading:['陶器正在就位','Preparing your piece'],unavailable:['陶器暂时无法显示','The piece could not be displayed'],
+  runningStory:['轮子一转，泥土有了主意。','A little movement. A new idea in clay.'],
+  idleStory:['轮子停了。工坊跟着歇一会。','The wheel rests. So does the studio.'],
+  unknownStory:['信号未确认，陶轮先停一会。','No confirmed signal. The pottery wheel waits.'],
+  power:['仓鼠动力','Hamster power'],work:['链上工作','Onchain work'],simWork:['模拟工作','Simulated work'],result:['你的器物','Your piece'],
+  community:['Squeekchain 社区作品','Made by the Squeekchain community'],
+  liveRecord:['链上区块','Onchain block'],simRecord:['不催仓鼠，随时练习。','No deadlines. Take your time.'],waitingRecord:['等待真实工作记录','Waiting for the work record'],
+  observed:['采样时间','Sample time'],accepted:['有效工作','Accepted work']
  };
- const homePresets=[{id:'jade',glaze:'jade',surface:'flow',colour:'#286e61',accent:'#aac8a0'},
-  {id:'ivory',glaze:'ivory',surface:'speckle',colour:'#ddd5bd',accent:'#ad9270'},
-  {id:'coral',glaze:'coral',surface:'glossy',colour:'#c9604c',accent:'#efbf8b'}];
- const getLang=()=>typeof lang==='function'?lang():lang;
- const homeT=key=>homeWords[key][getLang()==='en'?1:0];
- const node=(tag,className,key)=>{const n=document.createElement(tag);if(className)n.className=className;if(key)n.dataset.homeText=key;return n;};
- const svgNode=(tag,attributes={})=>{const n=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attributes))n.setAttribute(key,String(value));return n;};
- function hamsterPortrait(className){
-  const picture=svgNode('svg',{viewBox:'0 0 112 112',class:className,'aria-hidden':'true',fill:'none'});
-  const lines=svgNode('g',{stroke:'currentColor','stroke-width':'1.25','stroke-linecap':'round','stroke-linejoin':'round'});
-  for(const d of ['M29 35C15 31 14 16 24 14C35 11 39 23 38 27','M75 28C76 14 88 10 94 18C100 26 93 36 85 38','M32 32C42 22 68 21 79 33C91 45 94 66 82 79C72 91 38 91 26 79C14 65 20 44 32 32Z','M28 77C20 83 19 93 21 98M81 79C88 84 91 91 90 98','M25 56C32 51 39 54 42 62M69 62C73 54 82 53 87 58','M50 63Q56 68 62 63L56 61Z','M56 67V73M56 73Q50 79 45 72M56 73Q63 79 68 72','M38 66L17 63M38 70L14 71M74 66L95 63M74 70L98 73','M35 88L32 98M77 88L80 98','M28 20Q22 22 27 29M87 20Q93 25 86 30'])lines.append(svgNode('path',{d}));
-  lines.append(svgNode('circle',{cx:41,cy:48,r:2,fill:'currentColor',stroke:'none'}),svgNode('circle',{cx:72,cy:48,r:2,fill:'currentColor',stroke:'none'}));
-  picture.append(svgNode('circle',{cx:56,cy:56,r:53,stroke:'currentColor','stroke-width':'.6',opacity:'.38'}),lines);return picture;
- }
- const listeners=[];
+ const getLang=()=>typeof lang==='function'?lang():lang,t=key=>words[key][getLang()==='en'?1:0],listeners=[];
  const listen=(target,type,handler,options)=>{target.addEventListener?.(type,handler,options);listeners.push(()=>target.removeEventListener?.(type,handler,options));};
+ const put=(element,value)=>{const text=String(value);if(element.textContent!==text)element.textContent=text;};
  root.classList.add('home-intro');root.setAttribute('aria-labelledby','home-title');
- const shell=node('div','home-shell'),copy=node('div','home-copy'),eyebrow=node('p','home-eyebrow','eyebrow');
- const title=node('h1','home-title','title');title.id='home-title';title.tabIndex=-1;
- const lead=node('p','home-lead','lead');
- const actions=node('div','home-actions'),practice=node('button','home-enter','enter');practice.type='button';practice.id='home-enter';
- const practiceNote=node('span','home-practice-note','practice');
- const live=node('button','home-live','live');live.type='button';live.id='home-enter-live';
- const signal=node('p','home-signal');signal.id='home-live-signal';signal.setAttribute('role','status');
- const practiceGroup=node('div','home-practice');practiceGroup.append(practice,practiceNote);actions.append(practiceGroup,live,signal);
- copy.append(eyebrow,title,lead,actions);
- const artTrack=node('div','home-art-track'),art=node('div','home-art'),artLabel=node('div','home-art-label'),index=node('span','home-art-index');index.append(hamsterPortrait('home-hamster-mark'));
- const artName=node('span','home-art-name');artName.textContent='Squeektoshi';artLabel.append(index,artName);
- const canvas=node('canvas','home-canvas');canvas.id='home-scene';canvas.tabIndex=-1;canvas.setAttribute('role','img');
- const fallback=node('div','home-preview-fallback'),silhouette=node('div','home-silhouette'),fallbackText=node('p','home-fallback-text','previewLoading');
- silhouette.setAttribute('aria-hidden','true');fallback.append(silhouette,fallbackText);
- const materialRail=node('div','home-material-rail'),swatches=node('div','home-swatches'),caption=node('p','home-material-caption','caption');
- swatches.setAttribute('role','group');
- let preset=homePresets[0],preview=null,enabled=true,inView=false,disposed=false,elapsed=0,lastSignal={state:'unknown',mode:'live'},initialFrame=0,scrollFrame=0,sceneProgress=0;
- const buttons=homePresets.map(item=>{const b=node('button','home-swatch');b.type='button';b.dataset.homeGlaze=item.id;b.style.setProperty('--sample',item.colour);b.style.setProperty('--sample-accent',item.accent);const dot=node('span','home-swatch-dot');dot.setAttribute('aria-hidden','true');const name=node('span','home-swatch-name',item.id);b.append(dot,name);listen(b,'click',()=>{preset=item;applyPreset();render();});swatches.append(b);return b;});
- materialRail.append(swatches,caption);art.append(artLabel,canvas,fallback,materialRail);
- artTrack.append(art);
- const story=node('div','home-story'),storyTitle=node('h2','home-story-title','storyTitle'),makers=node('div','home-makers'),portrait=hamsterPortrait('home-hamster-portrait'),makerText=node('div','home-maker-text');
- const powerRole=node('span','home-maker-role','powerBy'),powerName=node('strong','home-maker-name');powerName.textContent='Squeektoshi';
- const artist=node('div','home-artist'),artistRole=node('span','home-maker-role','shapeBy'),artistName=node('strong','home-maker-name','you');artist.append(artistRole,artistName);
- const makerSignal=node('p','home-maker-signal');makerText.append(powerRole,powerName,artist);makers.append(portrait,makerText);
- const drive=node('div','home-drive');
- for(const [i,key] of ['footprint','verifiedWork','potteryWheel'].entries()){
-  if(i){const link=svgNode('svg',{viewBox:'0 0 56 20',class:'home-chain-link','aria-hidden':'true',fill:'none'});for(let j=0;j<3;j++)link.append(svgNode('rect',{x:2+j*17,y:j===1?7:4,width:21,height:j===1?6:12,rx:j===1?3:6,stroke:'currentColor','stroke-width':j===1?'1.2':'1.5'}));drive.append(link);}
-  const step=node('span','home-drive-step',key);drive.append(step);
- }
- const culture=node('p','home-culture','culture');story.append(storyTitle,makers,makerSignal,drive,culture);
- const foot=node('div','home-foot'),sequence=node('div','home-sequence');
- for(const [i,key] of ['rhythm','touch','keep'].entries()){const part=node('span','home-sequence-part'),number=node('small');number.textContent=String(i+1).padStart(2,'0');const word=node('span','',key);part.append(number,word);sequence.append(part);}
- const down=node('button','home-scroll');down.type='button';down.id='home-scroll';const downText=node('span','','scroll'),arrow=node('span','home-down-arrow');arrow.setAttribute('aria-hidden','true');arrow.textContent='↓';down.append(downText,arrow);
- const community=node('a','home-community','community');community.href='https://docs.squeekchain.com/';community.target='_blank';community.rel='noopener noreferrer';
- foot.append(sequence,community,down);shell.append(copy,artTrack,story,foot);root.replaceChildren(shell);
+ root.innerHTML=`<div class="home-shell">
+  <div class="home-main">
+   <div class="home-copy">
+    <img class="home-wordmark" src="./brand-research/official/squeekchain-wordmark.svg" alt="Squeekchain" width="1116" height="498">
+    <p class="home-eyebrow" data-home-text="eyebrow"></p>
+    <h1 class="home-title" id="home-title" tabindex="-1"><span data-home-text="title"></span><em data-home-text="titleAccent"></em></h1>
+    <p class="home-lead" data-home-text="lead"></p>
+    <div class="home-power-controls">
+     <div class="home-modes" role="group"><button type="button" data-home-mode="live" aria-pressed="true"><span class="home-mode-led" aria-hidden="true"></span><span data-home-text="live"></span></button><button type="button" data-home-mode="sim" aria-pressed="false" data-home-text="sim"></button></div>
+     <div class="home-sim-controls" role="group" hidden><button type="button" data-home-sim="steady" aria-pressed="false"><span class="home-control-dot" aria-hidden="true"></span><span data-home-text="run"></span></button><button type="button" data-home-sim="rest" aria-pressed="false"><span class="home-control-dot" aria-hidden="true"></span><span data-home-text="rest"></span></button></div>
+     <p class="home-signal" id="home-live-signal" role="status" aria-live="polite"></p>
+    </div>
+    <button type="button" class="home-enter" id="home-enter"><span data-home-text="enter"></span><span aria-hidden="true">↗</span></button>
+   </div>
+   <div class="home-art">
+    <div class="home-scene-grid" aria-hidden="true"></div>
+    <div class="home-source" role="img">
+     <span class="home-axis" aria-hidden="true"></span><span class="home-axis home-axis-bottom" aria-hidden="true"></span>
+     <div class="home-dial-ticks" aria-hidden="true"></div><div class="home-rotor" aria-hidden="true"></div>
+     <div class="home-inner-disc"><span class="home-hamster" aria-hidden="true"></span></div>
+     <div class="home-source-label"><span class="home-rpm-label"></span><div><strong class="home-rpm">—</strong> <small data-home-text="rpmUnit"></small></div></div>
+    </div>
+    <svg class="home-conduit" viewBox="0 0 330 150" aria-hidden="true"><path d="M0 0V60Q0 77 18 77H230Q250 77 250 97V140H330"/><path class="home-live-path" d="M0 0V60Q0 77 18 77H230Q250 77 250 97V140H330"/></svg>
+    <div class="home-motor-caption"><span class="home-status-led" aria-hidden="true"></span><span class="home-motor-state"></span></div>
+    <div class="home-workpiece">
+     <canvas class="home-canvas" id="home-scene" role="img"></canvas>
+     <div class="home-preview-fallback"><p class="home-fallback-text" data-home-text="loading"></p></div>
+     <div class="home-piece-label" data-home-text="piece"></div>
+    </div>
+   </div>
+   <p class="home-story"></p>
+  </div>
+  <div class="home-foot">
+   <a class="home-community" href="https://docs.squeekchain.com/" target="_blank" rel="noopener noreferrer" data-home-text="community"></a>
+   <div class="home-sequence"><span data-home-text="power"></span><i aria-hidden="true"></i><span class="home-work-label"></span><i aria-hidden="true"></i><span data-home-text="result"></span></div>
+   <span class="home-chain-record"></span>
+  </div>
+ </div>`;
+ const $=selector=>root.querySelector(selector);
+ const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),rpmCaption=$('.home-rpm-label'),motorState=$('.home-motor-state'),story=$('.home-story'),simControls=$('.home-sim-controls'),chainRecord=$('.home-chain-record'),fallbackText=$('.home-fallback-text');
+ const modeButtons=[...root.querySelectorAll('[data-home-mode]')],simButtons=[...root.querySelectorAll('[data-home-sim]')],textNodes=[...root.querySelectorAll('[data-home-text]')];
+ let preview=null,enabled=true,inView=false,disposed=false,angle=0,initialFrame=0,lastMotion='stopped';
+ let lastSignal={state:'unknown',mode:'live',rpm:null,workUnits:null,block:null,observedAt:null};
+ let piece={profile:null,form:'vase',glaze:'ink',surface:'glossy',finish:.82},profileInput=null;
  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
- // 位置由真实滚动反推，返回首页无需重播动画，也不会留下隐藏的标题。
- const clamp=value=>Math.max(0,Math.min(1,value));
- const ease=value=>{const t=clamp(value);return t*t*(3-2*t);};
- function paintScroll(progress=0,compact=window.innerWidth<=850){
-  sceneProgress=progress;
-  const retreat=ease(progress/.44),arrival=ease((progress-.28)/.36),approach=ease(progress/.9);
-  root.style.setProperty('--home-copy-opacity',String(compact?1:1-retreat));
-  root.style.setProperty('--home-copy-shift',`${(compact?0:-92*retreat).toFixed(2)}px`);
-  root.style.setProperty('--home-copy-x',`${(compact?0:-34*retreat).toFixed(2)}px`);
-  root.style.setProperty('--home-art-shift',`${(-28*approach).toFixed(2)}px`);
-  root.style.setProperty('--home-art-x',`${(compact?0:-16*approach).toFixed(2)}%`);
-  root.style.setProperty('--home-art-scale',String(1+approach*(compact ? .17 : .24)));
-  root.style.setProperty('--home-story-opacity',String(compact?1:arrival));
-  root.style.setProperty('--home-story-shift',`${(compact?0:42*(1-arrival)).toFixed(2)}px`);
-  root.style.setProperty('--home-journey',String(progress));
-  root.style.setProperty('--home-link-progress',String(ease((progress-.24)/.6)));
-  root.dataset.chapter=progress>.76?'3':progress>.3?'2':'1';
-  story.setAttribute('aria-hidden',String(!motion.matches&&!compact&&arrival<.05));
-  presentationView();
+ const number=value=>typeof value==='number'&&Number.isFinite(value)?value:null;
+ const recordValue=value=>(typeof value==='number'&&Number.isFinite(value)&&value>=0)||(typeof value==='string'&&/^\d+$/.test(value))?String(value):null;
+ const setAttribute=(element,key,value)=>{const text=String(value);if(element.getAttribute(key)!==text)element.setAttribute(key,text);};
+ function motorCaption(speed=preview?.rpm||0){return lastSignal.state==='unknown'?'workshopUnknown':lastSignal.state==='idle'&&speed>=.15?'workshopCoasting':lastSignal.state==='running'?'workshopRunning':'workshopIdle';}
+ function onTick(rpm,dt){
+  if(disposed||!enabled||!inView||document.hidden)return;
+  const speed=Number.isFinite(rpm)?Math.max(0,rpm):0;
+  angle=(angle+speed*6*Math.min(.1,Math.max(0,dt||0)))%360;
+  if(!motion.matches)rotor.style.transform=`rotate(${angle}deg)`;
+  root.style.setProperty('--home-signal',String(Math.min(1,speed/10)));
+  const nextMotion=speed<.015?'stopped':lastSignal.state==='running'?'moving':'coasting';
+  if(nextMotion!==lastMotion){lastMotion=nextMotion;root.dataset.motion=nextMotion;}
+  put(motorState,t(motorCaption(speed)));
  }
- function updateScroll(){
-  scrollFrame=0;
-  if(disposed)return;
-  if(!enabled||motion.matches){paintScroll();return;}
-  const bounds=root.getBoundingClientRect();
-  const compact=window.innerWidth<=850;
-  if(compact){
-   const track=artTrack.getBoundingClientRect(),distance=Math.max(1,artTrack.offsetHeight-art.offsetHeight);
-   paintScroll(clamp((art.getBoundingClientRect().top-track.top)/distance),true);
-  }else{
-   const distance=Math.max(window.innerHeight*.55,root.offsetHeight-shell.offsetHeight);
-   paintScroll(clamp((shell.getBoundingClientRect().top-bounds.top)/distance),false);
-  }
+ function applyPiece(all=false,previous={}){
+  if(!preview)return;
+  if(all||piece.profile!==previous.profile||piece.form!==previous.form){const profile=piece.profile||window.Pottery?.orderProfile?.('pear');if(profile)preview.setProfile(profile,piece.form);}
+  if(all||piece.glaze!==previous.glaze)preview.setGlaze(piece.glaze);
+  if(all||piece.surface!==previous.surface)preview.setSurface(piece.surface);
+  if(all||piece.finish!==previous.finish)preview.setFinish(piece.finish);
  }
- function scheduleScroll(){
-  if(disposed||scrollFrame||!enabled||!inView||document.hidden)return;
-  scrollFrame=requestAnimationFrame(updateScroll);
- }
- function cancelScroll(){cancelAnimationFrame(scrollFrame);scrollFrame=0;}
- function applyPreset(){preview?.setGlaze(preset.glaze);preview?.setSurface(preset.surface);preview?.setFinish(.66);root.style.setProperty('--home-glaze',preset.colour);root.style.setProperty('--home-accent',preset.accent);}
- function presentationView(){preview?.setPresentationView?.(motion.matches ? .36 : .36+Math.sin(elapsed*.085)*.1+sceneProgress*.58,.18+(motion.matches?0:Math.sin(elapsed*.065)*.008+sceneProgress*.3));}
  function initializePreview(){
   if(preview||disposed||root.dataset.preview==='unavailable')return;
-  const b=canvas.getBoundingClientRect();if(b.width<2||b.height<2)return;
+  const bounds=canvas.getBoundingClientRect();if(bounds.width<2||bounds.height<2)return;
   try{
-   preview=createStudio(canvas,{onReady(){root.dataset.preview='ready';},onTick(_rpm,dt){if(!motion.matches){elapsed+=dt;presentationView();}}});
-   preview.setRpm(0);preview.setPhase('glaze');applyPreset();presentationView();
-  }catch(error){root.dataset.preview='unavailable';fallbackText.dataset.homeText='previewUnavailable';render();}
+   preview=createStudio(canvas,{animatedPreview:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onTick,onReady(){root.dataset.preview='ready';}});
+   preview.setPhase('glaze');preview.setRpm(lastSignal.state==='running'?lastSignal.rpm||0:0);applyPiece(true);preview.setPresentationView?.(.42,.16);
+  }catch(error){root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';put(fallbackText,t('unavailable'));}
  }
  function syncVisibility(){
-  const show=enabled&&inView&&!document.hidden&&!disposed;
-  if(show){initializePreview();scheduleScroll();}else cancelScroll();
-  preview?.setVisible(show);
+  const show=enabled&&inView&&!document.hidden&&!disposed&&root.dataset.preview!=='unavailable';
+  root.dataset.motionActive=String(show);if(show)initializePreview();preview?.setVisible(show);
  }
- const observer=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{inView=entries.some(entry=>entry.isIntersecting);syncVisibility();},{rootMargin:'80px 0px',threshold:0}):null;
- if(observer)observer.observe(root);else{inView=true;initialFrame=requestAnimationFrame(syncVisibility);}
- function visibilityChanged(){syncVisibility();}
- function motionChanged(){cancelScroll();paintScroll();presentationView();scheduleScroll();}
- listen(document,'visibilitychange',visibilityChanged);listen(motion,'change',motionChanged);
- listen(window,'scroll',scheduleScroll,{passive:true});listen(window,'resize',scheduleScroll,{passive:true});
- const sizeObserver=typeof ResizeObserver==='function'?new ResizeObserver(scheduleScroll):null;sizeObserver?.observe(root);
- listen(canvas,'webglcontextlost',()=>{root.dataset.preview='unavailable';fallbackText.dataset.homeText='previewUnavailable';preview?.setVisible(false);render();});
- listen(practice,'click',()=>onEnter('sim'));listen(live,'click',()=>onEnter('live'));listen(down,'click',()=>onEnter());
+ const header=root.ownerDocument.querySelector('.header'),visibilityTargets=[canvas,$('.home-source')],visibleParts=new Map();
+ let observer=null,headerInset=-1;
+ function observeVisibleCanvas(){
+  const inset=Math.ceil(header?.getBoundingClientRect().height||84);
+  if(typeof IntersectionObserver!=='function'){
+   inView=visibilityTargets.some(target=>{const bounds=target.getBoundingClientRect();return bounds.bottom>inset&&bounds.top<window.innerHeight&&bounds.right>0&&bounds.left<window.innerWidth;});syncVisibility();return;
+  }
+  if(observer&&inset===headerInset)return;
+  observer?.disconnect();headerInset=inset;visibleParts.clear();
+  // 只观察两处真正运动的画面，扣除 sticky header；任一可见时保留同源动画。
+  observer=new IntersectionObserver(entries=>{for(const entry of entries)visibleParts.set(entry.target,entry.isIntersecting&&entry.intersectionRatio>0);inView=[...visibleParts.values()].some(Boolean);syncVisibility();},{rootMargin:`-${inset}px 0px 0px 0px`,threshold:[0,.001]});
+  for(const target of visibilityTargets)observer.observe(target);
+ }
+ observeVisibleCanvas();
+ const sizeObserver=typeof ResizeObserver==='function'?new ResizeObserver(()=>{observeVisibleCanvas();if(enabled&&inView&&!document.hidden)syncVisibility();}):null;sizeObserver?.observe(canvas);if(header)sizeObserver?.observe(header);
+ if(typeof IntersectionObserver!=='function')listen(window,'scroll',observeVisibleCanvas,{passive:true});
+ listen(document,'visibilitychange',syncVisibility);
+ listen(motion,'change',()=>{root.dataset.reducedMotion=String(motion.matches);if(motion.matches)rotor.style.transform='none';});
+ listen(canvas,'webglcontextlost',()=>{root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';preview?.setVisible(false);put(fallbackText,t('unavailable'));});
+ for(const button of modeButtons)listen(button,'click',()=>{if(button.dataset.homeMode!==lastSignal.mode)onModeChange(button.dataset.homeMode);});
+ for(const button of simButtons)listen(button,'click',()=>{if(lastSignal.mode==='sim')onSimChange(button.dataset.homeSim);});
+ listen($('#home-enter'),'click',()=>onEnter());
+ function renderSignal(){
+  const simulated=lastSignal.mode==='sim',state=lastSignal.state,unknown=state==='unknown';
+  root.dataset.powerMode=lastSignal.mode;root.dataset.wheelState=state;simControls.hidden=!simulated;
+  for(const button of modeButtons)setAttribute(button,'aria-pressed',button.dataset.homeMode===lastSignal.mode);
+  for(const button of simButtons)setAttribute(button,'aria-pressed',simulated&&(button.dataset.homeSim==='rest'?state==='idle':state==='running'));
+  put(signal,t(simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));signal.dataset.state=state;
+  put(rpmCaption,t(simulated?'simRpm':'liveRpm'));
+  put(rpmLabel,unknown?'—':lastSignal.rpm>0&&lastSignal.rpm<.1?'<0.1':(lastSignal.rpm||0).toFixed(1).padStart(4,'0'));
+  put(motorState,t(motorCaption()));
+  put(story,t(state==='running'?'runningStory':state==='idle'?'idleStory':'unknownStory'));
+  put($('.home-work-label'),t(simulated?'simWork':'work'));
+  put(chainRecord,simulated?t('simRecord'):unknown||lastSignal.block===null?t('waitingRecord'):`${t('liveRecord')} #${lastSignal.block}`);
+  const stamp=lastSignal.observedAt;
+  signal.title=!simulated&&stamp!==null?`${t('observed')} · ${new Intl.DateTimeFormat(getLang()==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(stamp)} UTC+8`:'';
+  chainRecord.title=!simulated&&!unknown&&lastSignal.workUnits!==null?`${t('accepted')} · ${lastSignal.workUnits}`:'';
+  root.dataset.observedAt=stamp===null?'':String(stamp);root.dataset.workUnits=lastSignal.workUnits??'';root.dataset.block=lastSignal.block??'';
+ }
  function render(){
-  root.querySelectorAll('[data-home-text]').forEach(e=>e.textContent=homeT(e.dataset.homeText));
-  canvas.setAttribute('aria-label',homeT('previewLabel'));swatches.setAttribute('aria-label',homeT('glazeLabel'));down.setAttribute('aria-label',homeT('scrollLabel'));
-  for(const b of buttons){b.setAttribute('aria-pressed',String(b.dataset.homeGlaze===preset.id));b.setAttribute('aria-label',homeT(b.dataset.homeGlaze));}
-  signal.textContent=homeT(lastSignal.state==='running'?'signalRun':lastSignal.state==='idle'?'signalRest':lastSignal.state==='preview'?'signalPreview':'signalUnknown');signal.dataset.state=lastSignal.state;
-  const simulated=lastSignal.mode==='sim';
-  if(simulated){signal.textContent=homeT('signalSim');signal.dataset.state='sim';}
-  makerSignal.textContent=homeT(simulated?'signalSim':lastSignal.state==='running'?'makerRun':lastSignal.state==='idle'?'makerRest':lastSignal.state==='preview'?'makerPreview':'makerWaiting');
-  root.dataset.powerMode=simulated?'sim':'live';root.dataset.wheelState=lastSignal.state;
-  root.dataset.homeLang=getLang()==='en'?'en':'zh';
-  scheduleScroll();
+  for(const element of textNodes)put(element,t(element.dataset.homeText));
+  root.dataset.homeLang=getLang()==='en'?'en':'zh';root.lang=getLang()==='en'?'en':'zh-CN';root.dataset.reducedMotion=String(motion.matches);
+  $('.home-modes').setAttribute('aria-label',t('sourceLabel'));simControls.setAttribute('aria-label',t('simulationLabel'));$('.home-source').setAttribute('aria-label',t('markLabel'));canvas.setAttribute('aria-label',t('pieceLabel'));
+  renderSignal();
  }
- render();applyPreset();
+ render();
  return {
   render,setLang(value){lang=value;render();},
-  setVisible(value){enabled=!!value;if(!enabled)paintScroll();syncVisibility();},
-  setSignal(value={}){const next=['running','idle','preview'].includes(value.state)?value.state:'unknown',mode=value.mode==='sim'?'sim':'live';if(next!==lastSignal.state||mode!==lastSignal.mode){lastSignal={state:next,mode};render();}},
-  dispose(){if(disposed)return;disposed=true;cancelAnimationFrame(initialFrame);cancelScroll();observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());paintScroll();preview?.dispose();}
+  setVisible(value){const next=!!value;if(enabled===next)return;enabled=next;syncVisibility();},
+  setSignal(value={}){
+   let state=['running','idle'].includes(value.state)?value.state:'unknown';const mode=value.mode==='sim'?'sim':'live';
+   if(state==='running'&&number(value.rpm)===null)state='unknown';
+   const rpm=state==='unknown'?null:state==='idle'?0:Math.max(0,value.rpm);
+   let observedAt=number(value.observedAt)??(typeof value.observedAt==='string'&&Number.isFinite(Date.parse(value.observedAt))?Date.parse(value.observedAt):null);
+   if(observedAt!==null&&Math.abs(observedAt)>8.64e15)observedAt=null;
+   lastSignal={state,mode,rpm,workUnits:recordValue(value.workUnits),block:recordValue(value.block),observedAt};
+   preview?.setRpm(state==='running'?rpm:0);renderSignal();
+  },
+  setPiece(value={}){
+   const previous=piece,next={...piece};
+   if(value.profile!==profileInput&&Array.isArray(value.profile)&&value.profile.length>1&&value.profile.every(Number.isFinite)){profileInput=value.profile;next.profile=value.profile.slice();}
+   for(const key of ['form','glaze','surface'])if(typeof value[key]==='string'&&value[key])next[key]=value[key];
+   if(number(value.finish)!==null)next.finish=Math.max(0,Math.min(1,value.finish));
+   piece=next;applyPiece(false,previous);
+  },
+  dispose(){if(disposed)return;disposed=true;cancelAnimationFrame(initialFrame);observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());preview?.dispose();}
  };
 }

@@ -19,7 +19,7 @@ def prepare():
     text = page.decode("utf-8")
     if "<script type=\"module\" src=\"app.js\">" in text:
         raise SystemExit("HTML 尚未打包。请先在项目目录运行 python3 build.py。")
-    for forbidden in ("QA fixture", "NOT LIVE DATA", "/Users/", "/workspace/", "file://"):
+    for forbidden in ("QA fixture", "NOT LIVE DATA", "/Users/", "/workspace/", "file://", "brand-research/", "squeektoshi-ceramic", 'src="companions.js"', 'href="companions.css"'):
         if forbidden in text:
             raise SystemExit(f"停止：公开页面含有禁止发布的标记 {forbidden!r}。")
     PUBLIC.mkdir(exist_ok=True)
