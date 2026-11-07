@@ -11,7 +11,7 @@ export function createStudio(canvas,callbacks={}){
  const camera=new THREE.PerspectiveCamera(33,1,.05,60),look=new THREE.Vector3(0,1.67,0),clock=new THREE.Clock(),raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
  let sceneReady=false,drawing=false,needsRender=true,needsShadow=true,pendingHover=null;
  const entranceDuration=animatedPreview&&callbacks.presentationEntrance===true&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?1:0;
- let entranceTime=0,cameraDistance=7.5*(entranceDuration?1.04:1);
+ let entranceTime=0,presentationScale=1,baseCameraDistance=7.5,cameraDistance=baseCameraDistance*(entranceDuration?1.04:1);
  let values=P.profile(),kind='vase',phase='shape',glaze='jade',surface='glossy',finish=.72,rpm=0,targetRpm=18,angle=0,drag=null,orbit=.28,tilt=.24,visible=true,disposed=false,frame=0,elapsed=0,changed=true,hoverHeight=.55,brushRadius=.13;
  // 静态预览按需绘制；动态首页与工作台保留连续物理时钟。
  function invalidate(shadow=false){needsRender=true;needsShadow ||= shadow;if(presentationOnly&&sceneReady&&visible&&!disposed&&!drawing&&!frame)frame=requestAnimationFrame(draw);}
@@ -32,7 +32,8 @@ export function createStudio(canvas,callbacks={}){
  const fill=new THREE.DirectionalLight('#d4e9ec',1.5);fill.position.set(3,3,-2);scene.add(fill);
  function material(color,metalness,roughness){return new THREE.MeshStandardMaterial({color,metalness,roughness,envMapIntensity:1.2});}
  function mesh(geometry,mat,parent=scene,pos=[0,0,0]){const m=new THREE.Mesh(geometry,mat);m.position.set(...pos);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;}
- const chrome=material('#9aa5a3',.96,.23),dark=material('#28352f',.85,.3),brass=material('#b09968',.88,.3),rubber=material('#2e3932',.05,.85);
+ const heroPlatform=animatedPreview&&callbacks.heroPlatform===true;
+ const chrome=material(heroPlatform?'#59625f':'#9aa5a3',.96,heroPlatform?.3:.23),dark=material(heroPlatform?'#18201e':'#28352f',.85,heroPlatform?.4:.3),brass=material('#b09968',.88,.3),rubber=material('#2e3932',.05,.85);
  const body=new THREE.Group();scene.add(body);
  function lathe(points,mat,parent=body){return mesh(new THREE.LatheGeometry(points.map(p=>new THREE.Vector2(...p)),160),mat,parent);}
  lathe([[0,.10],[1.05,.10],[1.17,.13],[1.22,.19],[1.22,.29],[1.19,.33],[0,.33]],dark);
@@ -42,15 +43,15 @@ export function createStudio(canvas,callbacks={}){
  lathe([[0,.41],[1.30,.41],[1.355,.435],[1.355,.47],[1.33,.49],[0,.49]],chrome,rotor);
  // 刻度直接贴在盘面，避免细小悬浮几何的闪烁。唯一的金色零位随真实转角运动。
  const dialCanvas=document.createElement('canvas');dialCanvas.width=dialCanvas.height=1024;
- const dg=dialCanvas.getContext('2d');dg.fillStyle='#b4b8ac';dg.fillRect(0,0,1024,1024);dg.translate(512,512);
- dg.strokeStyle='#9aa397';dg.lineWidth=2;dg.beginPath();dg.arc(0,0,475,0,Math.PI*2);dg.stroke();
- for(let i=0;i<60;i++){const a=i/60*Math.PI*2,major=i%5===0;dg.save();dg.rotate(a);dg.strokeStyle=major?'#596b59':'#82917e';dg.lineWidth=major?5:3;dg.beginPath();dg.moveTo(0,-468);dg.lineTo(0,major?-433:-450);dg.stroke();dg.restore();}
- for(const degrees of [0,90,180,270]){dg.save();dg.rotate(degrees*Math.PI/180);dg.fillStyle='#63735f';dg.font='25px monospace';dg.textAlign='center';dg.textBaseline='middle';dg.fillText(String(degrees).padStart(3,'0'),0,-401);dg.restore();}
- dg.save();dg.rotate(.18);dg.strokeStyle='#ac7842';dg.lineWidth=13;dg.beginPath();dg.moveTo(0,-475);dg.lineTo(0,-335);dg.stroke();dg.fillStyle='#745b36';dg.beginPath();dg.arc(0,-345,10,0,Math.PI*2);dg.fill();dg.restore();
+ const dg=dialCanvas.getContext('2d');dg.fillStyle=heroPlatform?'#242c29':'#b4b8ac';dg.fillRect(0,0,1024,1024);dg.translate(512,512);
+ dg.strokeStyle=heroPlatform?'#59645d':'#9aa397';dg.lineWidth=2;dg.beginPath();dg.arc(0,0,475,0,Math.PI*2);dg.stroke();
+ for(let i=0;i<60;i++){const a=i/60*Math.PI*2,major=i%5===0;dg.save();dg.rotate(a);dg.strokeStyle=heroPlatform?(major?'#b7b8a2':'#66766c'):(major?'#596b59':'#82917e');dg.lineWidth=major?5:3;dg.beginPath();dg.moveTo(0,-468);dg.lineTo(0,major?-433:-450);dg.stroke();dg.restore();}
+ for(const degrees of [0,90,180,270]){dg.save();dg.rotate(degrees*Math.PI/180);dg.fillStyle=heroPlatform?'#899b8c':'#63735f';dg.font='25px monospace';dg.textAlign='center';dg.textBaseline='middle';dg.fillText(String(degrees).padStart(3,'0'),0,-401);dg.restore();}
+ dg.save();dg.rotate(.18);dg.strokeStyle=heroPlatform?'#d5ac62':'#ac7842';dg.lineWidth=13;dg.beginPath();dg.moveTo(0,-475);dg.lineTo(0,-335);dg.stroke();dg.fillStyle=heroPlatform?'#bc914f':'#745b36';dg.beginPath();dg.arc(0,-345,10,0,Math.PI*2);dg.fill();dg.restore();
  // 三个不等距的小定位孔进一步打破圆周对称，保持盘面简洁。
- for(const a of [.8,2.7,4.5]){dg.fillStyle='#6e7c68';dg.beginPath();dg.arc(Math.sin(a)*370,Math.cos(a)*370,6,0,Math.PI*2);dg.fill();}
+ for(const a of [.8,2.7,4.5]){dg.fillStyle=heroPlatform?'#122019':'#6e7c68';dg.beginPath();dg.arc(Math.sin(a)*370,Math.cos(a)*370,6,0,Math.PI*2);dg.fill();}
  const dialTexture=new THREE.CanvasTexture(dialCanvas);dialTexture.colorSpace=THREE.SRGBColorSpace;dialTexture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
- const discMaterial=new THREE.MeshStandardMaterial({map:dialTexture,color:'#ffffff',metalness:.57,roughness:.36,envMapIntensity:1.05});
+ const discMaterial=new THREE.MeshStandardMaterial({map:dialTexture,color:'#ffffff',metalness:heroPlatform?.42:.57,roughness:heroPlatform?.43:.36,envMapIntensity:heroPlatform?.75:1.05});
  const disc=mesh(new THREE.CylinderGeometry(1.30,1.30,.012,160),[chrome,discMaterial,chrome],rotor,[0,.495,0]);disc.receiveShadow=false;
  const dummy=new THREE.Object3D();
  // 固定在底座上的指针不随盘面转动，给加速、惯性滑行和完全停转一个可见参照。
@@ -71,14 +72,17 @@ export function createStudio(canvas,callbacks={}){
  const ceramic=new THREE.MeshPhysicalMaterial({color:'#276f62',roughness:.15,metalness:.04,clearcoat:1,clearcoatRoughness:.11,bumpMap:bump,bumpScale:.004,envMapIntensity:1.05,side:THREE.FrontSide});
  // 纹理锁在陶器局部坐标：窑变与小爪印会绕到侧面、背面，不能靠静止高光假装旋转。
  const surfaceHeight={value:P.HEIGHT},surfaceMode={value:0},glazeAccent={value:new THREE.Color(getGlaze(glaze).accent)};
+ // 只在首页显影中使用片元遮罩；数值更新不会重建器形或触发阴影重算。
+ const heroReveal=animatedPreview&&callbacks.heroReveal===true,glazeReveal={value:1};canvas.dataset.glazeReveal='1.0000';
  // 品牌概念可指定原始透明 SVG 为窑印；不传时保留工作台现有爪印。
  const brandSeal=callbacks.sealUrl?new THREE.TextureLoader().load(callbacks.sealUrl,()=>invalidate()):null;
- function turningSurface(mat,glazed){mat.onBeforeCompile=shader=>{
+ function turningSurface(mat,glazed){const revealEnabled=glazed&&heroReveal;mat.onBeforeCompile=shader=>{
   shader.uniforms.potteryHeight=surfaceHeight;
   if(brandSeal)shader.uniforms.potterySeal={value:brandSeal};
   if(glazed){shader.uniforms.potterySurface=surfaceMode;shader.uniforms.potteryAccent=glazeAccent;}
+  if(revealEnabled){shader.uniforms.potteryGlazeReveal=glazeReveal;shader.uniforms.potteryClayColor={value:clay.color};}
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;\nuniform float potteryHeight;').replace('#include <begin_vertex>','#include <begin_vertex>\npotteryUV=uv;\npotteryY=position.y/potteryHeight;');
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'' )).replace('#include <color_fragment>',`#include <color_fragment>
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'')+(revealEnabled?'\nuniform float potteryGlazeReveal;\nuniform vec3 potteryClayColor;':'')).replace('#include <color_fragment>',`#include <color_fragment>
    float theta=potteryUV.x*6.2831853;
    float clayFlow=sin(theta*3.0+sin(potteryY*7.0)*0.9)*0.6+sin(theta*5.0-potteryY*9.0)*0.4;
    diffuseColor.rgb*=1.0+clayFlow*${glazed?'0.13':'0.085'};
@@ -123,12 +127,28 @@ export function createStudio(canvas,callbacks={}){
    ${brandSeal?`vec2 brandUV=vec2(dx*11.0+0.5,(potteryY-0.32)*7.3+0.5);
    float stamp=texture2D(potterySeal,clamp(brandUV,0.0,1.0)).a*step(0.0,brandUV.x)*step(brandUV.x,1.0)*step(0.0,brandUV.y)*step(brandUV.y,1.0);`:'float stamp=max(pad,max(toeA,max(toeB,toeC)))*(1.0-step(0.50,potteryUV.y));'}
    diffuseColor.rgb=mix(diffuseColor.rgb,${glazed?'vec3(0.46,0.34,0.18)':'diffuseColor.rgb*0.48'},stamp*${glazed?'0.82':'0.60'});
+   ${revealEnabled?`
+   // 釉线在局部坐标里微曲，随器物一起旋转；边界越过整段内外壁后精确恢复原釉面。
+   float glazeFront=mix(-0.07,1.11,potteryGlazeReveal)+sin(theta*2.0+0.4)*0.018+sin(theta*5.0-potteryY*2.0)*0.009;
+   float glazeCoverage=potteryGlazeReveal>=1.0?1.0:(potteryGlazeReveal<=0.0?0.0:1.0-smoothstep(glazeFront-0.025,glazeFront+0.025,potteryY));
+   vec3 unglazedColor=potteryClayColor*(1.0+clayFlow*0.085);
+   unglazedColor=mix(unglazedColor,unglazedColor*0.48,stamp*0.60);
+   diffuseColor.rgb=mix(unglazedColor,diffuseColor.rgb,glazeCoverage);`:''}
   `);
   shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
    roughnessFactor=clamp(roughnessFactor*(1.0+clayFlow*${glazed?'0.35':'0.18'}),0.06,1.0);
    ${glazed?'roughnessFactor=clamp(roughnessFactor+mineralSpot*0.20+glazeEdge*0.08,0.06,1.0);':''}
+   ${revealEnabled?'roughnessFactor=mix(0.5*(1.0+clayFlow*0.18),roughnessFactor,glazeCoverage);':''}
   `);
- };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'');}
+  if(revealEnabled)shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
+   metalnessFactor*=glazeCoverage;
+  `).replace('#include <lights_physical_fragment>',`#include <lights_physical_fragment>
+   #ifdef USE_CLEARCOAT
+    material.clearcoat=mix(0.18,material.clearcoat,glazeCoverage);
+    material.clearcoatRoughness=mix(0.35,material.clearcoatRoughness,glazeCoverage);
+   #endif
+  `);
+ };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?'-hero-reveal-v1':'');}
  turningSurface(clay,false);turningSurface(ceramic,true);
  // 小幅首页预览减少圆周细分；纵向塑形精度与工作台网格保持不变。
  const SEG=animatedPreview?96:144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
@@ -193,7 +213,7 @@ export function createStudio(canvas,callbacks={}){
  function draw(now){
   if(presentationOnly){drawPresentation(now);return;}frame=0;if(disposed||!visible)return;
   const started=performance.now(),dt=Math.min(clock.getDelta(),.1);elapsed+=dt;
-  if(entranceTime<entranceDuration){entranceTime=Math.min(entranceDuration,entranceTime+dt);cameraDistance=7.5*(1+.04*(1-entranceTime/entranceDuration)**3);setCamera();}
+  if(entranceTime<entranceDuration){entranceTime=Math.min(entranceDuration,entranceTime+dt);cameraDistance=baseCameraDistance*(1+.04*(1-entranceTime/entranceDuration)**3);setCamera();}
   rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;updateHover();shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;rotor.rotation.y=angle;targetGuide.rotation.y=orbit;
   if(changed){rebuild();needsShadow=true;}needsRender=false;renderScene();recordFrame();callbacks.onTick?.(rpm,dt);reportFrame(now,started);
   if(!disposed&&visible&&!frame)frame=requestAnimationFrame(draw);
@@ -214,6 +234,8 @@ export function createStudio(canvas,callbacks={}){
   setProfile(v,type=kind){values=v.slice();kind=type;changed=true;invalidate(true);},setRpm(v){targetRpm=Number.isFinite(v)?P.clamp(v,0,90):0;},get rpm(){return rpm;},get frame(){return frame;},
   setTarget,setPhase(next){up();pendingHover=null;phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
   setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
+  setPresentationScale(value){if(!Number.isFinite(value))return;const next=P.clamp(value,.85,1.25);if(next===presentationScale)return;presentationScale=next;baseCameraDistance=7.5/next;cameraDistance=baseCameraDistance*(entranceTime<entranceDuration?1+.04*(1-entranceTime/entranceDuration)**3:1);setCamera();},
+  setGlazeReveal(value){if(!heroReveal||!Number.isFinite(value))return;const next=P.clamp(value,0,1);if(next===glazeReveal.value)return;glazeReveal.value=next;canvas.dataset.glazeReveal=next.toFixed(4);invalidate();},
   orbitView(deltaOrbit=0,deltaTilt=0){if(Number.isFinite(deltaOrbit))orbit+=deltaOrbit;if(Number.isFinite(deltaTilt))tilt=P.clamp(tilt+deltaTilt,-.02,.9);setCamera();},
   resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const next=!!v;if(visible===next)return;visible=next;clock.getDelta();callbacks.onVisibility?.(visible,performance.now());if(!visible){up();pendingHover=null;guide.visible=false;cancelAnimationFrame(frame);frame=0;}else if(presentationOnly)invalidate();else if(!frame)frame=requestAnimationFrame(draw);},
   capture(width=1000,height=1100){

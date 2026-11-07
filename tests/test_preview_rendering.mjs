@@ -114,6 +114,58 @@ check('可选首页镜头在一秒内轻推收敛，减少动态效果偏好会�
  window.matchMedia=()=>({matches:true});scene=createStudio(canvas(),{animatedPreview:true,presentationEntrance:true});r=renderers.at(-1);step();assert.ok(Math.abs(r.camera.x-Math.sin(.28)*7.5)<1e-10);scene.dispose();delete window.matchMedia;
 });
 
+function renderedPot(renderer){let pot;renderer.world.traverse(object=>{if(object.isMesh&&object.material.isMeshPhysicalMaterial)pot=object;});assert.ok(pot);return pot;}
+function potteryShader(material){const shader={uniforms:{},vertexShader:Three.ShaderLib.physical.vertexShader,fragmentShader:Three.ShaderLib.physical.fragmentShader};material.onBeforeCompile(shader);return shader;}
+check('深石墨展台仅在动态首页启用，保留金色零位指针和原有网格数量',()=>{
+ const inspect=options=>{const scene=createStudio(canvas(),options),r=renderers.at(-1);step();const body=r.world.children.find(child=>child.isGroup),rotor=body.children.find(child=>child.isGroup),disc=rotor.children.find(child=>Array.isArray(child.material)),pointer=body.children.find(child=>child.geometry?.type==='ExtrudeGeometry');const result={ring:rotor.children.find(child=>child.geometry?.type==='LatheGeometry').material.color.getHexString(),roughness:disc.material[1].roughness,metalness:disc.material[1].metalness,pointer:pointer.material.color.getHexString(),calls:r.info.render.calls,triangles:r.info.render.triangles};scene.dispose();return result;};
+ const plain=inspect({animatedPreview:true}),hero=inspect({animatedPreview:true,heroPlatform:true}),studio=inspect({heroPlatform:true});
+ assert.equal(plain.ring,'9aa5a3');assert.equal(studio.ring,plain.ring);assert.equal(studio.roughness,plain.roughness);
+ assert.equal(hero.ring,'59625f');assert.equal(hero.roughness,.43);assert.equal(hero.metalness,.42);assert.equal(hero.pointer,plain.pointer);assert.equal(hero.pointer,'b09968');assert.equal(hero.calls,plain.calls);assert.equal(hero.triangles,plain.triangles);
+});
+check('显影默认完整，只对显式开启的动态首页陶瓷材质注入着色器',()=>{
+ for(const options of [{},{heroReveal:true},{presentationOnly:true,heroReveal:true},{animatedPreview:true},{animatedPreview:true,heroReveal:true}]){
+  const node=canvas(),scene=createStudio(node,options),r=renderers.at(-1);step();const clay=renderedPot(r).material,clayShader=potteryShader(clay);
+  assert.equal(clayShader.uniforms.potteryGlazeReveal,undefined);assert.ok(!clay.customProgramCacheKey().includes('hero-reveal'));
+  scene.setPhase('glaze');step();const ceramic=renderedPot(r).material,shader=potteryShader(ceramic),enabled=options.animatedPreview===true&&options.heroReveal===true;
+  assert.equal(node.dataset.glazeReveal,'1.0000');assert.equal(shader.uniforms.potteryGlazeReveal?.value,enabled?1:undefined);assert.equal(ceramic.customProgramCacheKey().includes('hero-reveal'),enabled);
+  scene.setGlazeReveal(.28);assert.equal(node.dataset.glazeReveal,enabled?'0.2800':'1.0000');if(enabled){assert.equal(shader.uniforms.potteryGlazeReveal.value,.28);assert.equal(shader.uniforms.potteryClayColor.value,clay.color);}else assert.ok(!shader.fragmentShader.includes('glazeCoverage'));
+  scene.dispose();
+ }
+});
+check('显影钳制范围并忽略非法值，直接更新已编译 uniform 而不重建器形或阴影',()=>{
+ const node=canvas(),scene=createStudio(node,{animatedPreview:true,heroReveal:true}),r=renderers.at(-1);scene.setPhase('glaze');step();const pot=renderedPot(r),geometry=pot.geometry,material=pot.material,positionVersion=geometry.attributes.position.version,materialVersion=material.version,shader=potteryShader(material),shadowCount=r.shadows,calls=r.info.render.calls;
+ scene.setGlazeReveal(.28);for(const value of [NaN,Infinity,-Infinity,undefined,'0.5'])scene.setGlazeReveal(value);assert.equal(shader.uniforms.potteryGlazeReveal.value,.28);assert.equal(node.dataset.glazeReveal,'0.2800');
+ scene.setGlazeReveal(-1);assert.equal(shader.uniforms.potteryGlazeReveal.value,0);assert.equal(node.dataset.glazeReveal,'0.0000');step();scene.setGlazeReveal(2);assert.equal(shader.uniforms.potteryGlazeReveal.value,1);assert.equal(node.dataset.glazeReveal,'1.0000');step();
+ assert.equal(pot.geometry,geometry);assert.equal(pot.material,material);assert.equal(geometry.attributes.position.version,positionVersion);assert.equal(material.version,materialVersion);assert.equal(r.shadows,shadowCount);assert.equal(r.info.render.calls,calls);scene.dispose();
+});
+check('显影片元使用当前 Three 的实际材质变量，素陶遮罩覆盖纹理与金印且完整显影保留釉面',()=>{
+ const scene=createStudio(canvas(),{animatedPreview:true,heroReveal:true}),r=renderers.at(-1);scene.setPhase('glaze');scene.setSurface('flow');step();const shader=potteryShader(renderedPot(r).material),fragment=shader.fragmentShader;
+ assert.ok(fragment.includes('uniform float potteryGlazeReveal;'));assert.ok(shader.vertexShader.includes('potteryY=position.y/potteryHeight;'));
+ assert.ok(fragment.indexOf('diffuseColor.rgb=mix(unglazedColor,diffuseColor.rgb,glazeCoverage);')>fragment.indexOf('stamp*0.82'),'clay masking must follow the glaze surface and gold seal');
+ assert.ok(fragment.includes('potteryGlazeReveal>=1.0?1.0:(potteryGlazeReveal<=0.0?0.0:1.0-smoothstep'));
+ assert.ok(fragment.includes('roughnessFactor=mix(0.5*(1.0+clayFlow*0.18),roughnessFactor,glazeCoverage);'));
+ assert.ok(Three.ShaderChunk.roughnessmap_fragment.includes('float roughnessFactor'));
+ assert.ok(Three.ShaderChunk.metalnessmap_fragment.includes('float metalnessFactor'));
+ assert.ok(Three.ShaderChunk.lights_physical_fragment.includes('material.clearcoat = clearcoat;'));
+ assert.ok(fragment.includes('material.clearcoat=mix(0.18,material.clearcoat,glazeCoverage);'));assert.ok(!fragment.includes('clearcoatFactor'));
+ assert.ok(fragment.indexOf('material.clearcoat=mix')>fragment.indexOf('#include <lights_physical_fragment>'));assert.ok(fragment.indexOf('material.clearcoat=mix')<fragment.indexOf('#include <lights_fragment_begin>'));
+ scene.dispose();
+});
+check('展示缩放忽略非法值、钳制范围并合并重绘，不改变几何或阴影',()=>{
+ const [scene,r]=preview();step();const pot=renderedPot(r),positionVersion=pot.geometry.attributes.position.version,shadows=r.shadows;
+ scene.setPresentationScale(1);scene.setPresentationScale(NaN);scene.setPresentationScale(Infinity);assert.equal(frames.size,0);
+ scene.setPresentationScale(2);step();assert.ok(Math.abs(r.camera.x/Math.sin(.28)-7.5/1.25)<1e-10);
+ scene.setPresentationScale(-5);step();assert.ok(Math.abs(r.camera.x/Math.sin(.28)-7.5/.85)<1e-10);
+ scene.setPresentationScale(1.12);scene.setPresentationScale(1.15);assert.equal(frames.size,1);step();assert.ok(Math.abs(r.camera.x/Math.sin(.28)-7.5/1.15)<1e-10);assert.equal(pot.geometry.attributes.position.version,positionVersion);assert.equal(r.shadows,shadows);scene.dispose();
+});
+check('首页入场尊重展示缩放，截图成功或失败后恢复缩放并继续原有入场',()=>{
+ window.matchMedia=()=>({matches:false});const node=canvas(),scene=createStudio(node,{animatedPreview:true,presentationEntrance:true,heroReveal:true}),r=renderers.at(-1);
+ scene.setPhase('glaze');scene.setGlazeReveal(.28);scene.setPresentationScale(1.2);scene.setPresentationView(.65,.18);step();const firstDistance=r.camera.x/Math.sin(.65),before=r.camera.clone();assert.ok(firstDistance>7.5/1.2&&firstDistance<7.8/1.2);
+ node.toDataURL=()=>{assert.ok(Math.abs(r.camera.x-Math.sin(.28)*7.5)<1e-10);return 'data:image/png;base64,scaled';};assert.equal(scene.capture(),'data:image/png;base64,scaled');assert.deepEqual(r.camera.toArray(),before.toArray());assert.equal(node.dataset.glazeReveal,'0.2800');
+ const failure=new Error('fixture: scaled capture failed');node.toDataURL=()=>{throw failure;};assert.throws(()=>scene.capture(),error=>error===failure);assert.deepEqual(r.camera.toArray(),before.toArray());step();assert.ok(r.camera.x/Math.sin(.65)<firstDistance);assert.ok(r.camera.x/Math.sin(.65)>7.5/1.2);
+ scene.setPresentationScale(1.1);for(let i=0;i<63;i++)step();assert.ok(Math.abs(r.camera.x-Math.sin(.65)*7.5/1.1)<1e-10);assert.equal(node.dataset.glazeReveal,'0.2800');scene.dispose();delete window.matchMedia;
+});
+
 // 让真实工作台先转起来，再从渲染场景读取实际 rotor，避免只测试静止预览。
 function spinningCapture(){
  const node=canvas(),scene=createStudio(node),r=renderers.at(-1),originalRender=r.render.bind(r);let renderedScene;
