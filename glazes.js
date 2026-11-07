@@ -5,7 +5,7 @@ export const GLAZES=Object.freeze([
  {id:'cobalt',name:['深钴蓝','Cobalt'],color:'#233d73',accent:'#94b5ce'},
  {id:'iron',name:['铁锈红','Iron'],color:'#74351f',accent:'#d8a06a'},
  {id:'seafoam',name:['青瓷绿','Celadon'],color:'#9caf95',accent:'#e4dec1'},
- {id:'turquoise',name:['孔雀蓝','Turquoise'],color:'#248f9c',accent:'#b6dfd3'},
+ {id:'turquoise',name:['孔雀蓝','Turquoise'],color:'#176f81',accent:'#a4dfd6'},
  {id:'lagoon',name:['晴空蓝','Sky'],color:'#729aba',accent:'#e0e6df'},
  {id:'ink',name:['曜石黑','Obsidian'],color:'#232b31',accent:'#7b8993'},
  {id:'amethyst',name:['烟紫','Amethyst'],color:'#7e6b9b',accent:'#c5b3cd'},

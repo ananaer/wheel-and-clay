@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {createOpeningPower} from '../opening.js';
+let total=0;const check=(name,fn)=>{fn();total++;console.log('PASS '+name);};
+check('新首页立即模拟开工，零速/未知不冒充实时',()=>{const p=createOpeningPower();assert.equal(p.mode,'sim');for(const s of [{state:'idle',rpm:0},{state:'unknown',rpm:18},{state:'running',rpm:null}])assert.equal(p.observe(s),'sim');});
+check('自动首屏仅有效正轮速转实时，停跑回明确模拟',()=>{const p=createOpeningPower();assert.equal(p.observe({state:'running',rpm:1.2}),'live');assert.equal(p.observe({state:'idle',rpm:0}),'sim');});
+check('明确实时链接保留零速和未知，不替换模拟',()=>{const p=createOpeningPower({requestedMode:'live'});assert.equal(p.automatic,false);assert.equal(p.observe({state:'idle',rpm:0}),'live');assert.equal(p.observe({state:'unknown'}),'live');});
+check('主动点击当前模拟也锁定来源',()=>{const p=createOpeningPower();p.choose('sim');assert.equal(p.observe({state:'running',rpm:18}),'sim');});
+check('进入创作后网络变化不能改玩法动力',()=>{const p=createOpeningPower();p.lock();assert.equal(p.observe({state:'running',rpm:42}),'sim');const real=createOpeningPower();real.observe({state:'running',rpm:18});real.lock();assert.equal(real.observe({state:'idle',rpm:0}),'live');});
+check('深链工作台不自动换源',()=>{const p=createOpeningPower({home:false});assert.equal(p.mode,'live');assert.equal(p.observe({state:'unknown'}),'live');});
+console.log(`RESULT ${total}/${total}`);

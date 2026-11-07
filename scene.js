@@ -4,20 +4,28 @@ import {getGlaze,getSurface,materialFor} from './glazes.js';
 /* 真正的可编辑旋转体，不使用预渲染器物图片。 */
 export function createStudio(canvas,callbacks={}){
  const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true;
- const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:callbacks.transparentBackground===true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
- renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=!presentationOnly;renderer.setClearColor(callbacks.background||'#eae8e1');
+ // 固定光源下的旋转体轮廓基本不变；重塑时再刷新阴影，避免每帧重复阴影通道。
+ renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.setClearColor(callbacks.background||'#eae8e1',callbacks.transparentBackground===true?0:1);
  const camera=new THREE.PerspectiveCamera(33,1,.05,60),look=new THREE.Vector3(0,1.67,0),clock=new THREE.Clock(),raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
- let sceneReady=false,drawing=false,needsRender=true,needsShadow=true;
+ let sceneReady=false,drawing=false,needsRender=true,needsShadow=true,pendingHover=null;
+ const entranceDuration=animatedPreview&&callbacks.presentationEntrance===true&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?1:0;
+ let entranceTime=0,cameraDistance=7.5*(entranceDuration?1.04:1);
  let values=P.profile(),kind='vase',phase='shape',glaze='jade',surface='glossy',finish=.72,rpm=0,targetRpm=18,angle=0,drag=null,orbit=.28,tilt=.24,visible=true,disposed=false,frame=0,elapsed=0,changed=true,hoverHeight=.55,brushRadius=.13;
- // 首页预览只在画面变化时绘制；工作台仍保留连续物理时钟。
+ // 静态预览按需绘制；动态首页与工作台保留连续物理时钟。
  function invalidate(shadow=false){needsRender=true;needsShadow ||= shadow;if(presentationOnly&&sceneReady&&visible&&!disposed&&!drawing&&!frame)frame=requestAnimationFrame(draw);}
  const H=()=>kind==='bowl'?1.78:P.HEIGHT;
- const setCamera=()=>{const distance=7.5;camera.position.set(Math.sin(orbit)*distance,1.67+Math.sin(tilt)*distance,Math.cos(orbit)*distance);camera.lookAt(look);invalidate();};setCamera();
+ const setCamera=()=>{camera.position.set(Math.sin(orbit)*cameraDistance,1.67+Math.sin(tilt)*cameraDistance,Math.cos(orbit)*cameraDistance);camera.lookAt(look);invalidate();};setCamera();
  const room=new THREE.Scene();room.background=new THREE.Color('#7f827a');
  const walls=new THREE.Mesh(new THREE.BoxGeometry(30,20,30),new THREE.MeshBasicMaterial({color:'#303b37',side:THREE.BackSide}));room.add(walls);
  function softbox(p,s,color,power){const m=new THREE.Mesh(new THREE.PlaneGeometry(...s),new THREE.MeshBasicMaterial({color:new THREE.Color(color).multiplyScalar(power),side:THREE.DoubleSide}));m.position.set(...p);m.lookAt(0,1,0);room.add(m);}
- softbox([-4,5,4],[3,7],'#fff3dd',5);softbox([5,4,2],[1.4,6],'#eff9ff',4);softbox([0,7,-1],[6,3],'#ffffff',3);softbox([-4,2,-4],[2,5],'#d5e6de',2);softbox([3,1,-5],[1,5],'#d7d0bb',2);
+ // 首页用一主一辅的竖向反光保留釉色，工作台与其他预览保持既有灯光。
+ const heroLighting=animatedPreview&&callbacks.heroLighting===true;
+ softbox([-4,5,4],heroLighting?[1,6.5]:[3,7],'#fff3dd',heroLighting?3.5:5);
+ softbox([5,4,2],heroLighting?[.5,5.5]:[1.4,6],'#eff9ff',heroLighting?1.8:4);
+ softbox([0,7,-1],heroLighting?[3,.8]:[6,3],'#ffffff',heroLighting?1:3);
+ softbox([-4,2,-4],[2,5],'#d5e6de',2);softbox([3,1,-5],[1,5],'#d7d0bb',2);
  const pmrem=new THREE.PMREMGenerator(renderer),env=pmrem.fromScene(room,.025);scene.environment=env.texture;pmrem.dispose();
  scene.add(new THREE.HemisphereLight('#fff8eb','#879182',1.1));
  const key=new THREE.DirectionalLight('#ffedda',2.5);key.position.set(-3.5,6,4);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.camera.left=-5;key.shadow.camera.right=5;key.shadow.camera.top=5;key.shadow.camera.bottom=-5;key.shadow.normalBias=.025;key.shadow.bias=-.0002;key.shadow.radius=8;key.shadow.blurSamples=12;scene.add(key);
@@ -122,7 +130,10 @@ export function createStudio(canvas,callbacks={}){
   `);
  };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'');}
  turningSurface(clay,false);turningSurface(ceramic,true);
- const SEG=144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
+ // 小幅首页预览减少圆周细分；纵向塑形精度与工作台网格保持不变。
+ const SEG=animatedPreview?96:144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
+ const sinAngle=new Float64Array(SEG+1),cosAngle=new Float64Array(SEG+1),sinTriple=new Float64Array(SEG+1),cosTriple=new Float64Array(SEG+1);
+ for(let j=0;j<=SEG;j++){const a=j/SEG*Math.PI*2;sinAngle[j]=Math.sin(a);cosAngle[j]=Math.cos(a);sinTriple[j]=Math.sin(a*3);cosTriple[j]=Math.cos(a*3);}
  for(let row=0;row<RINGS;row++)for(let j=0;j<=SEG;j++){const at=row*(SEG+1)+j;uv[at*2]=j/SEG;uv[at*2+1]=row/(RINGS-1);if(row<RINGS-1&&j<SEG){const next=at+SEG+1;indices.push(at,at+1,next,next,at+1,next+1);}}
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));geometry.setIndex(indices);
  const pot=mesh(geometry,clay,rotor,[0,.51,0]);
@@ -143,7 +154,8 @@ export function createStudio(canvas,callbacks={}){
   while(cross.length<RINGS)cross.push([0,.13]);
   for(let row=0;row<RINGS;row++){
    const [base,y]=cross[row],h=P.clamp((y-.045)/height,0,1),n=Math.min(P.COUNT-1,Math.round(h*(P.COUNT-1))),ridge=(row>2&&row<3+P.COUNT)?Math.sin(h*110)*(.00012+scratches[n]*.00015):0;
-   for(let j=0;j<=SEG;j++){const a=j/SEG*Math.PI*2,at=(row*(SEG+1)+j)*3;const r=base>0?base+ridge+Math.sin(a*3+h*7)*.0015:0;positions[at]=Math.sin(a)*r;positions[at+1]=y;positions[at+2]=Math.cos(a)*r;}
+   const sinHeight=Math.sin(h*7),cosHeight=Math.cos(h*7);
+   for(let j=0;j<=SEG;j++){const at=(row*(SEG+1)+j)*3,r=base>0?base+ridge+(sinTriple[j]*cosHeight+cosTriple[j]*sinHeight)*.0015:0;positions[at]=sinAngle[j]*r;positions[at+1]=y;positions[at+2]=cosAngle[j]*r;}
   }
   geometry.attributes.position.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingSphere();geometry.computeBoundingBox();changed=false;
  }
@@ -154,26 +166,42 @@ export function createStudio(canvas,callbacks={}){
  const guideMat=new THREE.MeshBasicMaterial({color:'#e8c8a3',transparent:true,opacity:.7,depthTest:false}),guide=new THREE.Mesh(new THREE.TorusGeometry(1,.0022,4,160),guideMat);guide.rotation.x=Math.PI/2;guide.visible=false;guide.renderOrder=4;scene.add(guide);
  function guideAt(y){invalidate();hoverHeight=P.clamp(y,0.04,1);const r=radiusAt(hoverHeight)+.009;guide.scale.set(r,r,1);guide.position.set(0,.51+.045+hoverHeight*H(),0);guide.visible=phase==='shape';}
  function hit(e){const b=canvas.getBoundingClientRect();pointer.set((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1);raycaster.setFromCamera(pointer,camera);return raycaster.intersectObject(pot)[0];}
- function down(e){if(presentationOnly||animatedPreview)return;if(e.button!==0||drag||e.isPrimary===false)return;const found=hit(e);if(phase==='shape'&&!found)return;if(phase==='shape'&&(rpm<.5||callbacks.canSculpt?.()===false)){callbacks.onBlocked?.();return;}e.preventDefault();canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);document.body.dataset.dragging='true';const local=found?pot.worldToLocal(found.point.clone()):null;drag={id:e.pointerId,x:e.clientX,y:e.clientY,originX:e.clientX,reach:Math.max(60,canvas.getBoundingClientRect().height*.18),pressure:0,target:0,didSculpt:false,center:local?P.clamp((local.y-.045)/H(),.06,1):.5,sign:pointer.x<0?-1:1};if(phase==='shape'){guideAt(drag.center);callbacks.onStrokeStart?.();}}
- function move(e){if(presentationOnly||animatedPreview)return;if(drag&&e.pointerId!==drag.id)return;if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;if(phase==='shape'){drag.target=P.touchTarget((e.clientX-drag.originX)*drag.sign,drag.reach);}else{orbit-=dx*.006;tilt=P.clamp(tilt+dy*.004,-.02,.9);setCamera();}}else if(phase==='shape'){const found=hit(e);if(found){const local=pot.worldToLocal(found.point.clone());guideAt((local.y-.045)/H());}else guide.visible=false;}}
+ function down(e){if(presentationOnly||animatedPreview)return;if(e.button!==0||drag||e.isPrimary===false)return;pendingHover=null;const found=hit(e);if(phase==='shape'&&!found)return;if(phase==='shape'&&(rpm<.5||callbacks.canSculpt?.()===false)){callbacks.onBlocked?.();return;}e.preventDefault();canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);document.body.dataset.dragging='true';const local=found?pot.worldToLocal(found.point.clone()):null;drag={id:e.pointerId,x:e.clientX,y:e.clientY,originX:e.clientX,reach:Math.max(60,canvas.getBoundingClientRect().height*.18),pressure:0,target:0,didSculpt:false,center:local?P.clamp((local.y-.045)/H(),.06,1):.5,sign:pointer.x<0?-1:1};if(phase==='shape'){guideAt(drag.center);callbacks.onStrokeStart?.();}}
+ function move(e){if(presentationOnly||animatedPreview)return;if(drag&&e.pointerId!==drag.id)return;if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;if(phase==='shape'){drag.target=P.touchTarget((e.clientX-drag.originX)*drag.sign,drag.reach);}else{orbit-=dx*.006;tilt=P.clamp(tilt+dy*.004,-.02,.9);setCamera();}}else if(phase==='shape'){pendingHover={clientX:e.clientX,clientY:e.clientY};}}
+ // 高频鼠标事件只保留最后一个位置，每个展示帧最多进行一次完整网格拾取。
+ function updateHover(){if(!pendingHover||drag||phase!=='shape')return;const point=pendingHover;pendingHover=null;const found=hit(point);if(found){const local=pot.worldToLocal(found.point.clone());guideAt((local.y-.045)/H());}else guide.visible=false;}
  function shapeUnderTouch(dt){if(!drag||phase!=='shape'||rpm<.5)return;const touch=P.stepTouch(drag.pressure,drag.target,dt);drag.pressure=touch.pressure;if(Math.abs(touch.delta)>1e-7&&callbacks.onSculpt?.(drag.center,touch.delta,brushRadius,rpm)){drag.didSculpt=true;const n=Math.round(drag.center*(P.COUNT-1));scratches[n]=Math.min(2,scratches[n]+Math.abs(touch.delta)*1.2);guideAt(drag.center);}guideMat.opacity=.35+Math.abs(drag.pressure)*.5;}
  function up(e){if(!drag||(e&&e.pointerId!==drag.id))return;const previous=drag;drag=null;if(canvas.hasPointerCapture(previous.id))canvas.releasePointerCapture(previous.id);document.body.dataset.dragging='false';guideMat.opacity=.7;if(phase==='shape'&&previous.didSculpt)callbacks.onStrokeEnd?.();}
- canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('lostpointercapture',up);canvas.addEventListener('pointerleave',()=>{if(!drag)guide.visible=false;});
- const resizer=new ResizeObserver(()=>{const size=presentationOnly?{width:canvas.clientWidth,height:canvas.clientHeight}:canvas.getBoundingClientRect(),width=size.width,height=size.height;if(!width||!height)return;renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();invalidate();});resizer.observe(canvas);
+ canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('lostpointercapture',up);canvas.addEventListener('pointerleave',()=>{pendingHover=null;if(!drag)guide.visible=false;});
+ const renderSize=new THREE.Vector2();
+ function resizeCanvas(){const size=presentationOnly?{width:canvas.clientWidth,height:canvas.clientHeight}:canvas.getBoundingClientRect(),width=size.width,height=size.height;if(!width||!height)return;renderer.getSize(renderSize);const resized=renderSize.x!==width||renderSize.y!==height,aspectChanged=camera.aspect!==width/height;if(resized)renderer.setSize(width,height,false);if(aspectChanged){camera.aspect=width/height;camera.updateProjectionMatrix();}if(resized||aspectChanged)invalidate();}
+ const resizer=new ResizeObserver(resizeCanvas);resizer.observe(canvas);
  rebuild();let ready=false;
- function recordFrame(){canvas.dataset.wheelAngle=(angle%(Math.PI*2)).toFixed(5);canvas.dataset.motorRpm=rpm.toFixed(3);canvas.dataset.touchPressure=(drag?.pressure||0).toFixed(4);canvas.dataset.middleRadius=radiusAt(.5).toFixed(6);if(!ready){ready=true;callbacks.onReady?.();}}
- function drawPresentation(){
+ function recordFrame(){const state={wheelAngle:(angle%(Math.PI*2)).toFixed(5),motorRpm:rpm.toFixed(3),touchPressure:(drag?.pressure||0).toFixed(4),middleRadius:radiusAt(.5).toFixed(6)};for(const key in state)if(canvas.dataset[key]!==state[key])canvas.dataset[key]=state[key];if(!ready){ready=true;callbacks.onReady?.();}}
+ function renderScene(){renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;renderer.render(scene,camera);}
+ function reportFrame(now,started){callbacks.onFrame?.({now,renderMs:performance.now()-started,phase,visible,drawCalls:renderer.info?.render?.calls??0,triangles:renderer.info?.render?.triangles??0});}
+ function drawPresentation(now){
   frame=0;if(disposed||!visible)return;drawing=true;
-  let animate=false;
+  const started=performance.now();let animate=false;
   try{
    // 返回 true 可让调用方的镜头缓动继续；停止后不再请求空白帧。
    animate=callbacks.onTick?.(0,Math.min(clock.getDelta(),.1))===true;
    if(changed){rebuild();needsRender=true;needsShadow=true;}
-   if(needsRender){needsRender=false;renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;targetGuide.rotation.y=orbit;renderer.render(scene,camera);recordFrame();}
+   if(needsRender){needsRender=false;targetGuide.rotation.y=orbit;renderScene();recordFrame();reportFrame(now,started);}
   }finally{drawing=false;if(!disposed&&visible&&(animate||needsRender)&&!frame)frame=requestAnimationFrame(draw);}
  }
- function draw(){if(presentationOnly){drawPresentation();return;}frame=0;if(disposed||animatedPreview&&!visible)return;frame=requestAnimationFrame(draw);const dt=Math.min(clock.getDelta(),.1);if(!visible)return;elapsed+=dt;rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;rotor.rotation.y=angle;targetGuide.rotation.y=orbit;if(changed)rebuild();renderer.render(scene,camera);canvas.dataset.wheelAngle=(angle%(Math.PI*2)).toFixed(5);canvas.dataset.motorRpm=rpm.toFixed(3);canvas.dataset.touchPressure=(drag?.pressure||0).toFixed(4);canvas.dataset.middleRadius=radiusAt(.5).toFixed(6);callbacks.onTick?.(rpm,dt);if(!ready){ready=true;callbacks.onReady?.();}}
- sceneReady=true;if(presentationOnly)invalidate(true);else draw();
+ function draw(now){
+  if(presentationOnly){drawPresentation(now);return;}frame=0;if(disposed||!visible)return;
+  const started=performance.now(),dt=Math.min(clock.getDelta(),.1);elapsed+=dt;
+  if(entranceTime<entranceDuration){entranceTime=Math.min(entranceDuration,entranceTime+dt);cameraDistance=7.5*(1+.04*(1-entranceTime/entranceDuration)**3);setCamera();}
+  rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;updateHover();shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;rotor.rotation.y=angle;targetGuide.rotation.y=orbit;
+  if(changed){rebuild();needsShadow=true;}needsRender=false;renderScene();recordFrame();callbacks.onTick?.(rpm,dt);reportFrame(now,started);
+  if(!disposed&&visible&&!frame)frame=requestAnimationFrame(draw);
+ }
+ // 只在工作台构造期预热：在首页动画建立前完成着色器、缓冲和阴影首次绘制。
+ // 不读物理时钟、不触发游戏/就绪/验收回调；真正可见的首帧仍按正常 RAF 绘制。
+ if(callbacks.prewarm===true&&!presentationOnly&&!animatedPreview){resizeCanvas();renderer.compile(scene,camera);renderScene();}
+ sceneReady=true;callbacks.onVisibility?.(visible,performance.now());if(presentationOnly)invalidate(true);else frame=requestAnimationFrame(draw);
  function setMaterial(){
   invalidate(true);
   const spec=materialFor(glaze,surface,finish);
@@ -184,15 +212,15 @@ export function createStudio(canvas,callbacks={}){
  }
  return {
   setProfile(v,type=kind){values=v.slice();kind=type;changed=true;invalidate(true);},setRpm(v){targetRpm=Number.isFinite(v)?P.clamp(v,0,90):0;},get rpm(){return rpm;},get frame(){return frame;},
-  setTarget,setPhase(next){up();phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
+  setTarget,setPhase(next){up();pendingHover=null;phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
   setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
   orbitView(deltaOrbit=0,deltaTilt=0){if(Number.isFinite(deltaOrbit))orbit+=deltaOrbit;if(Number.isFinite(deltaTilt))tilt=P.clamp(tilt+deltaTilt,-.02,.9);setCamera();},
-  resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const wasVisible=visible;visible=!!v;if((presentationOnly||animatedPreview)&&wasVisible===visible)return;clock.getDelta();if(!visible){up();guide.visible=false;if(presentationOnly||animatedPreview){cancelAnimationFrame(frame);frame=0;}}else if(presentationOnly)invalidate();else if(animatedPreview&&!frame)frame=requestAnimationFrame(draw);},
+  resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const next=!!v;if(visible===next)return;visible=next;clock.getDelta();callbacks.onVisibility?.(visible,performance.now());if(!visible){up();pendingHover=null;guide.visible=false;cancelAnimationFrame(frame);frame=0;}else if(presentationOnly)invalidate();else if(!frame)frame=requestAnimationFrame(draw);},
   capture(width=1000,height=1100){
-   const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible,oldRotor=rotor.rotation.y;
+   const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible,oldRotor=rotor.rotation.y,oldDistance=cameraDistance;
    // 导出只调整展示朝向，不写入物理 angle；无论截图成败都恢复正在运行的转盘。
-   try{guide.visible=false;orbit=.28;tilt=.24;rotor.rotation.y=0;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed){rebuild();needsShadow=true;}if(presentationOnly){renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;}renderer.render(scene,camera);return canvas.toDataURL('image/png');}
-   finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;rotor.rotation.y=oldRotor;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderer.render(scene,camera);}
+   try{guide.visible=false;orbit=.28;tilt=.24;rotor.rotation.y=0;cameraDistance=7.5;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed){rebuild();needsShadow=true;}renderScene();return canvas.toDataURL('image/png');}
+   finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;rotor.rotation.y=oldRotor;cameraDistance=oldDistance;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderScene();}
   },
   dispose(){disposed=true;cancelAnimationFrame(frame);resizer.disconnect();renderer.dispose();env.dispose();scene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});bump.dispose();plateTex.dispose();dialTexture.dispose();brandSeal?.dispose();},
  };

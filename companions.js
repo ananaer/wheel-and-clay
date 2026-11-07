@@ -1,8 +1,8 @@
 /* Squeeks 只提供配色灵感；真实跑轮动力来自 Squeektoshi。角色 ID 不代表持有权。 */
 export const COMPANIONS=Object.freeze([
- {id:'8891',glaze:'amethyst',name:['烟紫 Squeek','Amethyst Squeek'],traits:['盾形面部 · 圆点身体','Shield face · Circle body'],glazeName:['烟紫','Amethyst'],color:'#7e6b9b',accent:'#c5b1ff',imageSrc:'./brand-research/official/squeek-8891-sepolia.svg'},
- {id:'8890',glaze:'coral',name:['珊瑚橘 Squeek','Coral Squeek'],traits:['菱形面部 · 梅花身体','Diamond face · Clover body'],glazeName:['珊瑚橘','Coral'],color:'#c9604c',accent:'#ffb59e',imageSrc:'./brand-research/official/squeek-8890-sepolia.svg'},
- {id:'8889',glaze:'turquoise',name:['孔雀蓝 Squeek','Turquoise Squeek'],traits:['爱心面部 · 菱形身体','Heart face · Diamond body'],glazeName:['孔雀蓝','Turquoise'],color:'#248f9c',accent:'#72e4db',imageSrc:'./brand-research/official/squeek-8889-sepolia.svg'}
+ {id:'8891',glaze:'amethyst',name:['烟紫 Squeek','Amethyst Squeek'],traits:['盾形面部 · 圆点身体','Shield face · Circle body'],glazeName:['烟紫','Amethyst'],color:'#7e6b9b',accent:'#c5b1ff',imageSrc:'./brand-research/official/squeek-8891-display.png'},
+ {id:'8890',glaze:'coral',name:['珊瑚橘 Squeek','Coral Squeek'],traits:['菱形面部 · 梅花身体','Diamond face · Clover body'],glazeName:['珊瑚橘','Coral'],color:'#c9604c',accent:'#ffb59e',imageSrc:'./brand-research/official/squeek-8890-display.png'},
+ {id:'8889',glaze:'turquoise',name:['孔雀蓝 Squeek','Turquoise Squeek'],traits:['爱心面部 · 菱形身体','Heart face · Diamond body'],glazeName:['孔雀蓝','Turquoise'],color:'#248f9c',accent:'#72e4db',imageSrc:'./brand-research/official/squeek-8889-display.png'}
 ].map(item=>Object.freeze({...item,name:Object.freeze(item.name),traits:Object.freeze(item.traits),glazeName:Object.freeze(item.glazeName)})));
 
 // 兼容 JSON 中的整数 ID；不解析部分字符串、路径、对象或带空白的 ID。

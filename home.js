@@ -57,7 +57,6 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
     <div class="home-workpiece">
      <canvas class="home-canvas" id="home-scene" role="img"></canvas>
      <div class="home-preview-fallback"><p class="home-fallback-text" data-home-text="loading"></p></div>
-     <div class="home-piece-label" data-home-text="piece"></div>
     </div>
    </div>
    <p class="home-story"></p>
@@ -71,7 +70,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  const $=selector=>root.querySelector(selector);
  const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),rpmCaption=$('.home-rpm-label'),motorState=$('.home-motor-state'),story=$('.home-story'),simControls=$('.home-sim-controls'),chainRecord=$('.home-chain-record'),fallbackText=$('.home-fallback-text');
  const modeButtons=[...root.querySelectorAll('[data-home-mode]')],simButtons=[...root.querySelectorAll('[data-home-sim]')],textNodes=[...root.querySelectorAll('[data-home-text]')];
- let preview=null,enabled=true,inView=false,disposed=false,angle=0,initialFrame=0,lastMotion='stopped';
+ let preview=null,enabled=true,inView=false,disposed=false,angle=0,initialFrame=0,lastMotion='stopped',motionUiElapsed=.25,lastSignalStep=-1;
  let lastSignal={state:'unknown',mode:'live',rpm:null,workUnits:null,block:null,observedAt:null};
  let piece={profile:null,form:'vase',glaze:'ink',surface:'glossy',finish:.82},profileInput=null;
  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -82,9 +81,13 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  function onTick(rpm,dt){
   if(disposed||!enabled||!inView||document.hidden)return;
   const speed=Number.isFinite(rpm)?Math.max(0,rpm):0;
-  angle=(angle+speed*6*Math.min(.1,Math.max(0,dt||0)))%360;
+  const delta=Math.min(.1,Math.max(0,dt||0));
+  angle=(angle+speed*6*delta)%360;
   if(!motion.matches)rotor.style.transform=`rotate(${angle}deg)`;
-  root.style.setProperty('--home-signal',String(Math.min(1,speed/10)));
+  // 唯一逐帧 DOM 写入是合成层的转角；动力亮度与状态每秒最多更新四次。
+  motionUiElapsed+=delta;if(motionUiElapsed<.25)return;motionUiElapsed%=.25;
+  const signalStep=Math.round(Math.min(1,speed/10)*20);
+  if(signalStep!==lastSignalStep){lastSignalStep=signalStep;root.style.setProperty('--home-signal',String(signalStep/20));}
   const nextMotion=speed<.015?'stopped':lastSignal.state==='running'?'moving':'coasting';
   if(nextMotion!==lastMotion){lastMotion=nextMotion;root.dataset.motion=nextMotion;}
   put(motorState,t(motorCaption(speed)));
@@ -100,7 +103,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   if(preview||disposed||root.dataset.preview==='unavailable')return;
   const bounds=canvas.getBoundingClientRect();if(bounds.width<2||bounds.height<2)return;
   try{
-   preview=createStudio(canvas,{animatedPreview:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onTick,onReady(){root.dataset.preview='ready';}});
+   preview=createStudio(canvas,{animatedPreview:true,transparentBackground:true,presentationEntrance:true,heroLighting:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onTick,onReady(){root.dataset.preview='ready';}});
    preview.setPhase('glaze');preview.setRpm(lastSignal.state==='running'?lastSignal.rpm||0:0);applyPiece(true);preview.setPresentationView?.(.42,.16);
   }catch(error){root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';put(fallbackText,t('unavailable'));}
  }
@@ -127,15 +130,15 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  listen(document,'visibilitychange',syncVisibility);
  listen(motion,'change',()=>{root.dataset.reducedMotion=String(motion.matches);if(motion.matches)rotor.style.transform='none';});
  listen(canvas,'webglcontextlost',()=>{root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';preview?.setVisible(false);put(fallbackText,t('unavailable'));});
- for(const button of modeButtons)listen(button,'click',()=>{if(button.dataset.homeMode!==lastSignal.mode)onModeChange(button.dataset.homeMode);});
+ for(const button of modeButtons)listen(button,'click',()=>onModeChange(button.dataset.homeMode));
  for(const button of simButtons)listen(button,'click',()=>{if(lastSignal.mode==='sim')onSimChange(button.dataset.homeSim);});
  listen($('#home-enter'),'click',()=>onEnter());
  function renderSignal(){
   const simulated=lastSignal.mode==='sim',state=lastSignal.state,unknown=state==='unknown';
-  root.dataset.powerMode=lastSignal.mode;root.dataset.wheelState=state;simControls.hidden=!simulated;
+  setAttribute(root,'data-power-mode',lastSignal.mode);setAttribute(root,'data-wheel-state',state);if(simControls.hidden===simulated)simControls.hidden=!simulated;
   for(const button of modeButtons)setAttribute(button,'aria-pressed',button.dataset.homeMode===lastSignal.mode);
   for(const button of simButtons)setAttribute(button,'aria-pressed',simulated&&(button.dataset.homeSim==='rest'?state==='idle':state==='running'));
-  put(signal,t(simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));signal.dataset.state=state;
+  put(signal,t(simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));setAttribute(signal,'data-state',state);
   put(rpmCaption,t(simulated?'simRpm':'liveRpm'));
   put(rpmLabel,unknown?'—':lastSignal.rpm>0&&lastSignal.rpm<.1?'<0.1':(lastSignal.rpm||0).toFixed(1).padStart(4,'0'));
   put(motorState,t(motorCaption()));
@@ -143,9 +146,9 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   put($('.home-work-label'),t(simulated?'simWork':'work'));
   put(chainRecord,simulated?t('simRecord'):unknown||lastSignal.block===null?t('waitingRecord'):`${t('liveRecord')} #${lastSignal.block}`);
   const stamp=lastSignal.observedAt;
-  signal.title=!simulated&&stamp!==null?`${t('observed')} · ${new Intl.DateTimeFormat(getLang()==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(stamp)} UTC+8`:'';
-  chainRecord.title=!simulated&&!unknown&&lastSignal.workUnits!==null?`${t('accepted')} · ${lastSignal.workUnits}`:'';
-  root.dataset.observedAt=stamp===null?'':String(stamp);root.dataset.workUnits=lastSignal.workUnits??'';root.dataset.block=lastSignal.block??'';
+  setAttribute(signal,'title',!simulated&&stamp!==null?`${t('observed')} · ${new Intl.DateTimeFormat(getLang()==='en'?'en-GB':'zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(stamp)} UTC+8`:'');
+  setAttribute(chainRecord,'title',!simulated&&!unknown&&lastSignal.workUnits!==null?`${t('accepted')} · ${lastSignal.workUnits}`:'');
+  setAttribute(root,'data-observed-at',stamp??'');setAttribute(root,'data-work-units',lastSignal.workUnits??'');setAttribute(root,'data-block',lastSignal.block??'');
  }
  function render(){
   for(const element of textNodes)put(element,t(element.dataset.homeText));

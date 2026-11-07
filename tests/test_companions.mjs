@@ -9,7 +9,7 @@ check('只开放三个已核实角色及固定釉色映射',()=>{
  for(const companion of COMPANIONS){
   assert.equal(getCompanion(companion.id),companion);
   assert.equal(getCompanion(Number(companion.id)),companion);
-  assert.equal(companion.imageSrc,`./brand-research/official/squeek-${companion.id}-sepolia.svg`);
+  assert.equal(companion.imageSrc,`./brand-research/official/squeek-${companion.id}-display.png`);
   assert.equal(companion.name.length,2);assert.equal(companion.traits.length,2);
   assert.match(companion.name[0],/[\u3400-\u9fff]/);assert.doesNotMatch(companion.name[1],/[\u3400-\u9fff]/);
   assert.match(companion.traits[0],/[\u3400-\u9fff]/);assert.doesNotMatch(companion.traits[1],/[\u3400-\u9fff]/);

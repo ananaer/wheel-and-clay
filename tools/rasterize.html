@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>Official SVG display derivatives</title><style>body{background:#101114;color:#eee;font:16px system-ui}figure{display:inline-block;margin:10px}img{width:250px;height:250px;object-fit:contain}a{display:block;color:#ffc048}</style><h1>Official Squeeks · display derivatives</h1><div id="output"></div><script type="module">
+for(const id of ['8889','8890','8891']){
+ const source=new Image();source.src='../brand-research/official/squeek-'+id+'-sepolia.svg';await source.decode();
+ const canvas=document.createElement('canvas');canvas.width=750;canvas.height=750;const c=canvas.getContext('2d');c.drawImage(source,0,0,750,750);
+ const image=new Image();image.src=canvas.toDataURL('image/png');image.id='raster-'+id;image.alt='Official Squeek #'+id;
+ const figure=document.createElement('figure'),caption=document.createElement('figcaption');caption.textContent='Squeek #'+id+' · 750px';figure.append(image,caption);document.getElementById('output').append(figure);
+}
+</script>

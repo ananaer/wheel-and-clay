@@ -10,7 +10,7 @@
 | squeek-8890-sepolia.svg | https://api.squeekchain.com/v1/squeeks/8890 的 metadata.imageDataUri | Sepolia 样例原始矢量角色，配色灵感 |
 | squeek-8891-sepolia.svg | https://api.squeekchain.com/v1/squeeks/8891 的 metadata.imageDataUri | Sepolia 样例原始矢量角色，配色灵感 |
 
-原始文件位于 `brand-research/official/`。公开应用只打包上表五件素材，不包含研究库的社区创作图片或被否决的生成式陶瓷角色。
+原始文件位于 `brand-research/official/`。公开应用使用上表字标、仓鼠标志与三张角色的展示副本，不包含研究库的社区创作图片或被否决的生成式陶瓷角色。
 
 三张角色 SVG 于 2026-11-07 从官方公开 API 的 `metadata.imageDataUri` 原样解码，保留其黑底和图形；对应的是 Sepolia 样例，不是当前主网藏品或用户钱包持有证明。仓鼠 mark 从公开 DOM 提取，仅补入独立 SVG 所需的命名空间和官网原色变量；首页的 `#FFC048` 遮罩、动力环及器物金色窑印是本项目设计的品牌延展。
 
@@ -27,3 +27,7 @@ Squeektoshi 是真实跑轮输入的来源；Squeeks 是配色灵感。当前映
 | squeek-8889-sepolia.svg | `69262410977a23e6c9d14c0a55316270039e0edc392f80f787867fda6f479fa8` |
 | squeek-8890-sepolia.svg | `5eb969213f31808c2783e28d9ada47aefea3c76160eca3618ddf1f82ebbd4e26` |
 | squeek-8891-sepolia.svg | `065d8e704f9e46fdb1708d4ea0d5c3ecb2fcecf2768149ee156e626d1e496369` |
+
+## 滚动性能的展示副本
+
+`squeek-8889-display.png`、`squeek-8890-display.png`、`squeek-8891-display.png` 是对应官方 SVG 的 750×750 无改绘浏览器栅格化副本。用于主图、缩略图和作品卡，避免约 1,100 个 SVG use 元素反复进入可视区时的栅格化长停顿；原始 SVG 与来源哈希保留。生成页面 `tools/rasterize.html` 只读本地 SVG，结果不包含新增或替换的角色内容。
