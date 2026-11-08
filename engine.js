@@ -3,6 +3,20 @@
  'use strict';
  const COUNT=129, MIN=.24, MAX=1.23, HEIGHT=2.65;
  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+ // 传感器保持原始 RPM；传动将高速跑轮转换为可操作的陶轮目标转速。
+ // 低速 3:1，36 RPM 以上连续接入软上限；零速绝不添加最低动力。
+ function potteryDrive(sensorRpm){
+   if(typeof sensorRpm!=='number'||!Number.isFinite(sensorRpm)||sensorRpm<0)return null;
+   return sensorRpm<=36?sensorRpm/3:12-16*Math.expm1(-(sensorRpm-36)/48);
+ }
+ function driveSignal(signal={}){
+   const target=['running','idle'].includes(signal.state)?potteryDrive(signal.rpm):null;
+   return target===null?{...signal,state:'unknown',rpm:null,potteryRpm:null}:{...signal,potteryRpm:target};
+ }
+ function simulatedWheelRpm(mode='steady',time=0){
+   const now=Number.isFinite(time)?time:0;
+   return mode==='steady'?60+Math.sin(now/2100)*1.8:mode==='sprint'?110+Math.sin(now/1300)*6:0;
+ }
  function profile(kind='vase'){
    const anchors=kind==='bowl'?[[0,.59],[.1,.67],[.28,.83],[.5,1.02],[.75,1.12],[1,1.16]]:kind==='column'?[[0,.6],[.08,.69],[.4,.72],[.8,.69],[1,.7]]:[[0,.56],[.06,.66],[.22,.94],[.43,1.01],[.63,.81],[.78,.46],[.92,.38],[1,.47]];
    return fromAnchors(anchors);
@@ -76,6 +90,6 @@
  function stepMotor(current,target,dt){return current+(Math.max(0,Math.min(90,target))-current)*(1-Math.exp(-Math.max(0,Math.min(.1,dt))/(target>current?.75:1.3)));}
  function changed(a,b){return a.some((v,i)=>Math.abs(v-b[i])>1e-5);}
  function history(initial,kind='vase'){let entries=[{values:initial.slice(),kind}],index=0;return {push(v,nextKind=entries[index].kind){if(!changed(entries[index].values,v)&&nextKind===entries[index].kind)return;entries=entries.slice(0,index+1);entries.push({values:v.slice(),kind:nextKind});if(entries.length>40)entries.shift();index=entries.length-1;},undo(){if(index>0)index--;return entries[index].values.slice();},redo(){if(index<entries.length-1)index++;return entries[index].values.slice();},get form(){return entries[index].kind;},get canUndo(){return index>0;},get canRedo(){return index<entries.length-1;}};}
- root.Pottery={COUNT,MIN,MAX,HEIGHT,clamp,profile,sculpt,touchTarget,stepTouch,orderProfile,similarity,repairCommission,repairMetrics,spendTurns,advanceRound,validProfile,stepMotor,changed,history};
+ root.Pottery={COUNT,MIN,MAX,HEIGHT,clamp,potteryDrive,driveSignal,simulatedWheelRpm,profile,sculpt,touchTarget,stepTouch,orderProfile,similarity,repairCommission,repairMetrics,spendTurns,advanceRound,validProfile,stepMotor,changed,history};
  if(typeof module!=='undefined')module.exports=root.Pottery;
 })(typeof window!=='undefined'?window:globalThis);

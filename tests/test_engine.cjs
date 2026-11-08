@@ -61,7 +61,7 @@ test('错误的收放方向没有修复收益',()=>{
  for(const id of repairIds){const c=P.repairCommission(id),wrong=P.sculpt(c.initial,c.center,c.direction==='narrow'?.04:-.04,c.brushRadius,18);const m=P.repairMetrics(wrong,c,true);assert.equal(m.repair,0);assert(!m.success);}
 });
 test('九份委托在慢走、常速、冲刺下都能用真实施力规则修复',()=>{
- for(const rpm of [8,18,42])for(const id of repairIds){
+ for(const rpm of [24,60,110].map(P.potteryDrive))for(const id of repairIds){
   const c=P.repairCommission(id);let p=c.initial,pressure=0,used=0,m=P.repairMetrics(p,c,true),frames=0;
   while(used<12&&!m.success&&frames++<7200){const touch=P.stepTouch(pressure,c.direction==='narrow'?-.65:.65,1/60);pressure=touch.pressure;p=P.sculpt(p,c.center,touch.delta,c.brushRadius,rpm);used=P.spendTurns(used,rpm,1/60,true,12);m=P.repairMetrics(p,c,true);}
   assert(m.success,`${id} at ${rpm} RPM`);assert(used>0&&used<12);assert(m.preservation>=90);
@@ -76,4 +76,41 @@ test('修坯断线不扣圈不结算，转动速度确实决定时间成本',()=
  assert(P.advanceRound(freshRound('repair'),42,.1,'running').used>P.advanceRound(freshRound('repair'),18,.1,'running').used);
 });
 test('无效修复轮廓安全失败',()=>{const c=P.repairCommission('cup');assert.equal(P.repairMetrics([],c,true).success,false);assert.equal(P.repairMetrics(c.initial,null,true).success,false);});
+test('传动保持低速3:1与常见跑速可玩范围，连续趋近28RPM',()=>{
+ assert.equal(P.potteryDrive(0),0);assert.equal(P.potteryDrive(.003),.001);assert.equal(P.potteryDrive(24),8);assert.equal(P.potteryDrive(36),12);
+ assert(P.potteryDrive(60)>18&&P.potteryDrive(60)<19);assert(P.potteryDrive(80)>21&&P.potteryDrive(80)<22);assert(P.potteryDrive(110)>24&&P.potteryDrive(110)<25);
+ let previous=0;for(let input=.1;input<1000;input+=.1){const output=P.potteryDrive(input);assert(output>=previous);assert(output<=28);previous=output;}
+ const epsilon=1e-4,left=(P.potteryDrive(36)-P.potteryDrive(36-epsilon))/epsilon,right=(P.potteryDrive(36+epsilon)-P.potteryDrive(36))/epsilon;assert(Math.abs(left-right)<1e-6);assert.equal(P.potteryDrive(Number.MAX_VALUE),28);
+});
+test('传感器67.1RPM保真，映射不篡改API毫转单位或原始对象',()=>{
+ const fixture={measurement:{...raw.measurement,rpmMilli:67100,speedMmPerSecond:740}},before=JSON.stringify(fixture),sample=C.normalizeStatus(fixture,now),drive=P.driveSignal(sample);
+ assert.equal(sample.rpm,67.1);assert.equal(drive.rpm,67.1);assert(drive.potteryRpm>19&&drive.potteryRpm<21);assert.equal(fixture.measurement.rpmMilli,67100);assert.equal(JSON.stringify(fixture),before);
+});
+test('零输入严格零，未知/非法输入保持未知而不是伪装静止',()=>{
+ assert.deepEqual(P.driveSignal({state:'idle',rpm:0}),{state:'idle',rpm:0,potteryRpm:0});
+ for(const rpm of [null,undefined,NaN,Infinity,-Infinity,-1,'60',true]){assert.equal(P.potteryDrive(rpm),null);const signal=P.driveSignal({state:'running',rpm});assert.equal(signal.state,'unknown');assert.equal(signal.rpm,null);assert.equal(signal.potteryRpm,null);}
+ const unknown=P.driveSignal({state:'unknown',rpm:67.1});assert.equal(unknown.state,'unknown');assert.equal(unknown.rpm,null);assert.equal(unknown.potteryRpm,null);
+ const stale=P.driveSignal(C.normalizeStatus(raw,now+180000));assert.equal(stale.state,'unknown');assert.equal(stale.potteryRpm,null);
+});
+test('模拟匀速和冲刺先生成传感器RPM，再经过与实时相同的传动',()=>{
+ assert.equal(P.simulatedWheelRpm('steady',0),60);assert.equal(P.simulatedWheelRpm('sprint',0),110);assert.equal(P.simulatedWheelRpm('rest',1000),0);
+ for(let time=0;time<60000;time+=237){const steady=P.simulatedWheelRpm('steady',time),sprint=P.simulatedWheelRpm('sprint',time);assert(steady>=58.2&&steady<=61.8);assert(sprint>=104&&sprint<=116);assert(P.potteryDrive(steady)<P.potteryDrive(sprint));assert(P.potteryDrive(sprint)<28);}
+});
+function drivenRound(sensorRpm,play='turns',seconds=100){
+ let state=freshRound(play),motor=0,elapsed=0;const signal=P.driveSignal({state:'running',rpm:sensorRpm}),dt=1/60;
+ while(elapsed<seconds&&!state.reason){motor=P.stepMotor(motor,signal.potteryRpm,dt);state=P.advanceRound(state,motor,dt,signal.state);elapsed+=dt;}
+ return {state,motor,elapsed};
+}
+test('20圈订单按实际减速陶轮结算，60与110RPM输入保留可操作时间',()=>{
+ const steady=drivenRound(60),sprint=drivenRound(110);assert.equal(steady.state.used,20);assert.equal(sprint.state.used,20);assert.equal(steady.state.reason,'exhausted');assert(steady.elapsed>65&&steady.elapsed<68);assert(sprint.elapsed>48&&sprint.elapsed<51);assert(sprint.elapsed<steady.elapsed);
+ const after20seconds=drivenRound(60,'turns',20);assert(after20seconds.state.used<7);assert(!after20seconds.state.reason,'不能把传感器20圈当作陶轮20圈');
+ const repair=drivenRound(60,'repair');assert.equal(repair.state.used,12);assert.equal(repair.state.reason,'repairExhausted');assert(repair.elapsed>39&&repair.elapsed<42);
+});
+test('传动后的停跑惯性与旧一跑定形规则兼容，未知阶段不扣圈或结算',()=>{
+ let {state,motor}=drivenRound(60,'burst',10),used=state.used;
+ for(let i=0;i<180;i++){motor=P.stepMotor(motor,0,1/60);state=P.advanceRound(state,motor,1/60,'unknown');}assert.equal(state.used,used);assert(!state.reason);
+ for(let i=0;i<120;i++){motor=P.stepMotor(motor,P.potteryDrive(60),1/60);state=P.advanceRound(state,motor,1/60,'running');}assert(state.used>used);assert(state.armed);
+ let idleSeconds=0;while(!state.reason&&idleSeconds<10){motor=P.stepMotor(motor,0,1/60);state=P.advanceRound(state,motor,1/60,'idle');idleSeconds+=1/60;}
+ assert.equal(state.reason,'settled');assert(idleSeconds>=3);assert(motor<.5);
+});
 console.log(`RESULT ${passed}/${passed}`);

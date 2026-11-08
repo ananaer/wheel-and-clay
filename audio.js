@@ -226,9 +226,9 @@ export function createSoundscape({onChange=()=>{},WorkerCtor=globalThis.Worker}=
     const now=context.currentTime, beat=60/scoreFor(trackId).bpm;
     if(nextBeat<now-.5)nextBeat=now+.04;
     while(nextBeat<now+.14){
-      if(wheelEnabled&&activity>.5&&beatIndex%(activity>=30?2:4)===0){
+      if(wheelEnabled&&activity>.5&&beatIndex%(activity>=23?2:4)===0){
         const tap=context.createBufferSource(),gain=context.createGain();tap.buffer=cachedBuffers.get('tap');
-        gain.gain.value=activity>=30?.045:.028;tap.connect(gain);gain.connect(master);
+        gain.gain.value=activity>=23?.045:.028;tap.connect(gain);gain.connect(master);
         tap.onended=()=>{tap.disconnect();gain.disconnect();};tap.start(nextBeat);
       }
       nextBeat+=beat;beatIndex++;

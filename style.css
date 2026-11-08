@@ -140,3 +140,6 @@ dialog[open]{animation:dialog-arrive .2s ease-out}dialog[open]::backdrop{animati
 @media(prefers-reduced-motion:reduce){.sound-track{transition:none}}
 
 .sound-track[data-preparing="true"] .track-indicator{background:transparent;border:1px solid currentColor;border-right-color:transparent;border-radius:50%;animation:track-preparing .8s linear infinite}.sound-track[data-preparing="true"]{opacity:.7}@keyframes track-preparing{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.sound-track[data-preparing="true"] .track-indicator{animation:none}}
+
+/* 两端独立读数，传动关系放在数值之间；仓鼠遥测不被游戏转速覆盖。 */
+.input-reading .drive-link{display:flex;align-items:center;gap:6px;margin:7px 0;color:var(--muted)}.drive-link i{display:block;width:15px;height:8px;border-left:1px solid currentColor;border-bottom:1px solid currentColor;position:relative;opacity:.7}.drive-link i:after{content:"";position:absolute;right:0;bottom:-2px;width:4px;height:4px;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:rotate(-45deg)}.drive-link small{font-size:8px;letter-spacing:.02em}.pottery-rpm-row{margin-top:4px}#pottery-rpm{font:25px/1 var(--serif);font-variant-numeric:tabular-nums;letter-spacing:-.025em}.input-reading .rpm-row{gap:5px}

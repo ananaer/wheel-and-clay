@@ -1,0 +1,42 @@
+# 更新记录
+
+日期均为 UTC+8。本文件记录产品行为、验收依据与宣传素材版本；公开网页、源码和宣传视频分别标明，不把本地完成当作已发布。
+
+## 2026-11-08 · 降速传动与新版片头
+
+- 将仓鼠传感器轮速和虚拟陶轮转速分开，保留真实数据，经连续减速曲线驱动游戏；界面直接呈现传动关系。塑形和挑战预算仍以实际陶轮运动计算。
+- 宣传片 V4 延长品牌形成与阅读时间，压缩后段成品旋转；保留塑形、上釉、刻印的制作速度。
+- 输入60 / 80 / 110 RPM分别对应约18.3 / 21.6 / 24.6陶轮RPM；低速保留3:1关系，高速连续趋近28，零和未知不造动力。
+- 浏览器验证双读数、中英切换、Steady/Sprint/Rest、实际塑形；67.1硬件格式测试夹具输出19.63，断线夹具双读数为“—”。真实接口本次另收到HTTP200及硬件零速，测试夹具不冒称现场非零样本。
+- 减速后完整制作、Rest→Run连续20秒/1201样本，无倒转、无渲染帧漏重，最长帧17.7ms；相关逻辑检查141项通过。
+- [新版22秒宣传片与封面](media/README.md)一并入库：0–2秒点阵亮起并拉回、2–4秒品牌停留，随后连续移左/引入陶轮；保留原始制作帧与自然缓停，片尾等待缩短至2秒。
+
+## 2026-11-08 · 首页运动连续性
+
+对应提交：[cedf57c](https://github.com/ananaer/wheel-and-clay/commit/cedf57c)。
+
+- 对正改为前向滑行与平滑减速，消除最短弧倒转和为赶朝向而突然提速。
+- 刻印完成、重播继续使用同一转角和角速度；恢复转动有过渡。
+- 动画按浏览器 RAF 时间差积分，避免回调执行延迟把多帧转动挤进一帧；隐藏和恢复首帧不追补后台时间。
+- 真实浏览器两轮各20秒采样覆盖完整制作和定位/扫描暂停恢复：每轮1201样本、无倒转、无渲染帧漏读/重复读、最长帧17.8ms。使用实际渲染帧时间计算角速度，保留失败记录，单测与平均FPS不替代实测。
+- 宣传片 V3 增加同一品牌标志移左、陶轮连续入场和推进，修整特写顶部留白；1080p/60fps、20秒、明确标注模拟与独立社区身份。
+
+## 2026-11-08 · 完整制作演示
+
+- [26f1138](https://github.com/ananaer/wheel-and-clay/commit/26f1138)：首页从素坯开始，连续塑形、上釉和激光刻印；演示与用户作品隔离，可重播，停止动力暂停加工。
+- [da55b26](https://github.com/ananaer/wheel-and-clay/commit/da55b26)：明确 Squeek 配色的作用，扩大刻印表现。
+
+## 2026-11-07 · 首页、品牌与交互
+
+- [c6c3316](https://github.com/ananaer/wheel-and-clay/commit/c6c3316)：修整较窄桌面窗口中的刻印舞台边界。
+- [a4139b4](https://github.com/ananaer/wheel-and-clay/commit/a4139b4)：加入由跑轮动力驱动的首页激光刻印。
+- [3aeabce](https://github.com/ananaer/wheel-and-clay/commit/3aeabce)：以转动与釉色显现重构桌面开场。
+- [d3d2de0](https://github.com/ananaer/wheel-and-clay/commit/d3d2de0)：默认英文、孔雀蓝；改进首屏、滚动与首次工作台渲染停顿。
+- [20e43f1](https://github.com/ananaer/wheel-and-clay/commit/20e43f1)：整合 Squeekchain 动力展示与三种 Squeek 配色共创。
+- [384e6f4](https://github.com/ananaer/wheel-and-clay/commit/384e6f4)：完善首页、音乐和分享中的 Squeekchain 关联。
+- [8548b15](https://github.com/ananaer/wheel-and-clay/commit/8548b15)：打磨塑形交互，明确真实传感器计数与游戏圈数的区别。
+- [faff2cc](https://github.com/ananaer/wheel-and-clay/commit/faff2cc)：首版可编辑三维陶艺工作台、釉色、挑战、本机收藏与只读实时数据。
+
+## 发布边界
+
+游戏只读使用 Squeekchain 公开数据，不连接钱包、不发交易。宣传片是使用同源三维场景制作的模拟演示，不能作为当时真实仓鼠运动或官方背书的证明。官方品牌素材来源见 [BRAND-ASSETS.md](BRAND-ASSETS.md)。

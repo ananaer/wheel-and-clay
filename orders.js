@@ -17,12 +17,12 @@ export function createOrders(hooks){
   playLabel:['选择玩法','Choose a mode'],study:['临摹练习','Open practice'],turns:['20 圈订单','Twenty turns'],burst:['一跑定形','One run only'],repair:['修坯委托','Rescue a pot'],
   studyShort:['不限圈，慢慢找到手感。','No turn limit. Take your time.'],turnsShort:['用有限的转动，接近目标。','A small budget. Make every turn count.'],burstShort:['它一停稳，这件就定形。','When it stops, your shape is set.'],repairShort:['修好一处，护住其余。限 12 圈。','Fix the flaw. Protect the rest. 12 turns.'],
   studyRule:['没有圈数上限。跑轮停了就休息，满意时交付。','No turn limit. Rest when the wheel rests; deliver when you are ready.'],
-  turnsRule:['20 圈用完自动定形。仓鼠跑得越快，可操作的时间越短；停稳后暂停消耗。','The shape sets after 20 turns. A faster hamster leaves less time; a resting wheel spends no turns.'],
+  turnsRule:['20 圈陶轮转动用完自动定形。仓鼠跑得越快，可操作的时间越短；停稳后暂停消耗。','The shape sets after 20 pottery-wheel turns. A faster hamster leaves less time; a resting wheel spends no turns.'],
   burstRule:['等它开跑。首次停跑并停稳后自动定形，也可提前交付；断线只会暂停。','Wait for a run. Its first settled stop sets your shape, or deliver early. Lost signals only pause the round.'],
-  repairRule:['从受损陶坯开始，用 12 圈修复一处。轮廓达 85%、完好区保留 90% 视为修复成功；可提前交付，停稳暂停。','Repair a damaged pot in 12 turns. Success needs 85% shape match and 90% intact area kept. You may deliver early; rest pauses the wheel.'],
+  repairRule:['从受损陶坯开始，用 12 圈陶轮转动修复一处。轮廓达 85%、完好区保留 90% 视为修复成功；可提前交付，停稳暂停。','Repair a damaged pot in 12 pottery-wheel turns. Success needs 85% shape match and 90% intact area kept. You may deliver early; rest pauses the wheel.'],
   replaceKicker:['开始新挑战','A new commission'],replaceTitle:['先安放这一件。','Keep this moment.'],replaceBody:['工作台上还有未收藏的作品。开始新挑战会替换它。','There is an uncollected piece on your wheel. Starting a new commission replaces it.'],continuePiece:['继续当前作品','Continue this piece'],replacePiece:['放弃并开始','Discard & start'],finishFirst:['先完成当前挑战','Finish my current challenge first'],close:['关闭','Close'],
   start:['开始这件 ↗','Start this piece ↗'],unsaved:['新一局会替换当前陶坯。','A new round replaces the piece on your wheel.'],keepFirst:['先收藏当前作品','Keep my current piece first'],
-  remaining:['剩余动力','Turns left'],spent:['已用动力','Turns used'],unit:['圈','turns'],match:['轮廓吻合','Shape match'],exit:['返回自由创作','Back to free creation'],
+  remaining:['剩余陶轮圈','Pottery turns left'],spent:['已用陶轮圈','Pottery turns used'],unit:['圈','turns'],match:['轮廓吻合','Shape match'],exit:['返回自由创作','Back to free creation'],
   running:['按住轻推，朝金色轮廓慢慢成形。','Hold a gentle pull toward the gold outline.'],sprinting:['转盘正在加速，试着减轻施力。','The wheel is speeding up. Use a lighter touch.'],waiting:['等仓鼠开工。停稳期间不消耗圈数。','Waiting for the hamster. No turns spent at rest.'],
   coasting:['跑轮停了，陶轮正慢慢停稳。','The wheel stopped. The clay is coasting.'],unknown:['信号未知，本局暂停计数与塑形。','Signal unknown. Shaping and the turn count are paused.'],finished:['器形已定，挑选釉色后收藏。','Shape set. Choose a glaze, then keep it.'],
   studyTitle:['随它转。\n慢慢做。','Follow the wheel.\nTake your time.'],turnsTitle:['20 圈。\n一件订单。','Twenty turns.\nOne commission.'],burstTitle:['这一跑。\n就这一件。','One run.\nOne chance.'],repairTitle:['修好一处。\n守住其余。','Rescue a pot.\nKeep its character.'],
@@ -107,7 +107,7 @@ export function createOrders(hooks){
   const metrics=state.repair?P.repairMetrics(hooks.profile(),state.repair,state.edited):null;
   put('order-count-label',t(limited?'remaining':'spent'));put('order-remaining',(limited?Math.max(0,budget-state.used):state.used).toFixed(1));put('order-match',P.similarity(hooks.profile(),state.target)+'%');$('order-progress').hidden=!limited;$('order-progress').max=budget;$('order-progress').value=budget-state.used;$('order-progress').setAttribute('aria-label',t('remaining'));
   if(metrics&&$('repair-metrics'))put('repair-metrics',repairSummary(metrics)+(metrics.success?' · '+t('repairReady'):''));
-  let hint=!running?'finished':sample.state==='unknown'?'unknown':sample.state==='idle'?(hooks.rpm()>=.5?'coasting':'waiting'):hooks.rpm()>=28?'sprinting':'running';
+  let hint=!running?'finished':sample.state==='unknown'?'unknown':sample.state==='idle'?(hooks.rpm()>=.5?'coasting':'waiting'):hooks.rpm()>=23?'sprinting':'running';
   if(running&&sample.state!=='unknown'&&state.play==='burst')hint=!state.armed?'burstWait':sample.state==='idle'?'burstCoast':'burstRun';
   const repairHint=running&&metrics&&sample.state==='running'?(metrics.preservation<90?t('repairProtect'):repairCue(state.repair)):null;
   put('order-state',repairHint||t(hint));

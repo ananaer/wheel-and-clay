@@ -16,7 +16,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   enter:['开始你的创作','MAKE YOURS'],study:['创作演示','CREATION DEMO'],replay:['重播演示','Replay demo'],powered:['全厂唯一动力师','CHIEF OF SPIN'],proof:['把跑动变成作品。','From running to remarkable.'],
   laserUnavailable:['预览不可用','Preview unavailable'],demoClay:['素坯就位','Fresh clay'],demoShape:['正在塑形','Shaping'],demoGlaze:['流动上釉','Glazing'],demoEngrave:['激光刻印','Laser engraving'],demoDone:['作品完成','Made on the wheel'],laserPaused:['等待动力','Awaiting power'],
   markLabel:['Squeekchain 官方仓鼠标志','Official Squeekchain hamster mark'],
-  simRpm:['模拟轮速','Simulated speed'],liveRpm:['实测轮速','Measured speed'],rpmUnit:['转 / 分','RPM'],
+  hamsterWheel:['仓鼠跑轮','Hamster wheel'],potteryWheel:['陶艺转盘','Pottery wheel'],gearedDrive:['减速传动','Geared drive'],simRpm:['模拟轮速','Simulated speed'],liveRpm:['实测轮速','Measured speed'],rpmUnit:['转 / 分','RPM'],
   workshopRunning:['工坊开工中','The studio is running'],workshopIdle:['工坊休息中','The studio is resting'],workshopUnknown:['等待跑轮信号','Waiting for wheel data'],workshopCoasting:['陶轮正在减速','Pottery wheel coasting'],
   piece:['你的器物','Your piece'],pieceLabel:['由跑轮动力驱动的三维制作演示：塑形、施釉、刻印','A wheel-powered 3D creation demo: shape, glaze, engrave'],
   loading:['陶器正在就位','Preparing your piece'],unavailable:['陶器暂时无法显示','The piece could not be displayed'],
@@ -52,19 +52,19 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   <div class="home-foot">
    <div class="home-power-controls">
     <div class="home-modes" role="group"><button type="button" data-home-mode="live" aria-pressed="true" data-home-text="live"></button><button type="button" data-home-mode="sim" aria-pressed="false" data-home-text="sim"></button></div>
-    <div class="home-source-info"><div class="home-reading"><span class="home-status-led" aria-hidden="true"></span><strong class="home-rpm">—</strong><small data-home-text="rpmUnit"></small><span class="home-motor-state"></span></div><p class="home-signal" id="home-live-signal" role="status" aria-live="polite"></p></div>
+    <div class="home-source-info"><div class="home-reading"><span class="home-status-led" aria-hidden="true"></span><span class="home-speed"><span data-home-text="hamsterWheel"></span><strong class="home-rpm">—</strong><small data-home-text="rpmUnit"></small></span><span class="home-drive-link"><i aria-hidden="true"></i><small data-home-text="gearedDrive"></small></span><span class="home-speed"><span data-home-text="potteryWheel"></span><strong class="home-pottery-rpm">—</strong><small data-home-text="rpmUnit"></small></span><span class="home-motor-state" hidden></span></div><p class="home-signal" id="home-live-signal" role="status" aria-live="polite"></p></div>
    </div>
    <div class="home-sim-controls" role="group" hidden><button type="button" data-home-sim="steady" aria-pressed="false"><span aria-hidden="true">▶</span><span data-home-text="run"></span></button><button type="button" data-home-sim="rest" aria-pressed="false"><span aria-hidden="true">Ⅱ</span><span data-home-text="rest"></span></button></div>
    <button type="button" class="home-enter" id="home-enter"><span data-home-text="enter"></span><span aria-hidden="true">↗</span></button>
   </div>
  </div>`;
  const $=selector=>root.querySelector(selector);
- const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),motorState=$('.home-motor-state'),simControls=$('.home-sim-controls'),fallbackText=$('.home-fallback-text'),etchStatus=$('.home-etch-status');
+ const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),potteryRpmLabel=$('.home-pottery-rpm'),motorState=$('.home-motor-state'),simControls=$('.home-sim-controls'),fallbackText=$('.home-fallback-text'),etchStatus=$('.home-etch-status');
  const modeButtons=[...root.querySelectorAll('[data-home-mode]')],simButtons=[...root.querySelectorAll('[data-home-sim]')],textNodes=[...root.querySelectorAll('[data-home-text]')];
  const demo=createCraftDemo({count:window.Pottery.COUNT});
  let demoState=demo.snapshot(),appliedProfile=null,demoGlaze='turquoise';
  let preview=null,enabled=true,inView=false,disposed=false,lastMotion='stopped',motionUiElapsed=.25,lastSignalStep=-1;
- let lastSignal={state:'unknown',mode:'live',rpm:null,workUnits:null,block:null,observedAt:null};
+ let lastSignal={state:'unknown',mode:'live',rpm:null,potteryRpm:null,workUnits:null,block:null,observedAt:null};
  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
  const number=value=>typeof value==='number'&&Number.isFinite(value)?value:null;
  const recordValue=value=>(typeof value==='number'&&Number.isFinite(value)&&value>=0)||(typeof value==='string'&&/^\d+$/.test(value))?String(value):null;
@@ -81,7 +81,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   if(signalStep!==lastSignalStep){lastSignalStep=signalStep;root.style.setProperty('--home-signal',String(signalStep/20));}
   const nextMotion=speed<.015?'stopped':lastSignal.state==='running'?'moving':'coasting';
   if(nextMotion!==lastMotion){lastMotion=nextMotion;root.dataset.motion=nextMotion;}
-  put(motorState,t(motorCaption(speed)));
+  put(motorState,t(motorCaption(speed)));put(potteryRpmLabel,lastSignal.state==='unknown'?'—':(demoState.angularVelocity*60/(Math.PI*2)).toFixed(1));root.dataset.potteryRpm=String(demoState.angularVelocity*60/(Math.PI*2));
  }
  function demoCaption(){return root.dataset.preview==='unavailable'?'laserUnavailable':demoState.phase==='complete'?'demoDone':lastSignal.state!=='running'?'laserPaused':({clay:'demoClay',shape:'demoShape',glaze:'demoGlaze',engrave:'demoEngrave'}[demoState.phase]||'demoClay');}
  function applyDemo(state){
@@ -106,7 +106,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   const bounds=canvas.getBoundingClientRect();if(bounds.width<2||bounds.height<2)return;
   try{
    preview=createStudio(canvas,{animatedPreview:true,transparentBackground:true,presentationEntrance:true,heroLighting:true,heroPlatform:true,heroLaser:true,heroReveal:true,heroCraft:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onTick,onReady(){root.dataset.preview='ready';}});
-   preview.setPhase('glaze');preview.setGlaze(demoGlaze);preview.setSurface('flow');preview.setFinish(.78);preview.setRpm(lastSignal.state==='running'?lastSignal.rpm||0:0);preview.setPresentationView?.(.35,.12);preview.setPresentationScale?.(1.08);applyDemo(demo.step({dt:0,rpm:0,powered:false,reducedMotion:motion.matches}));
+   preview.setPhase('glaze');preview.setGlaze(demoGlaze);preview.setSurface('flow');preview.setFinish(.78);preview.setRpm(lastSignal.state==='running'?lastSignal.potteryRpm||0:0);preview.setPresentationView?.(.35,.12);preview.setPresentationScale?.(1.08);applyDemo(demo.step({dt:0,rpm:0,powered:false,reducedMotion:motion.matches}));
   }catch(error){root.dataset.preview='unavailable';fallbackText.dataset.homeText='unavailable';put(fallbackText,t('unavailable'));$('.home-replay').disabled=true;put(etchStatus,t('laserUnavailable'));put(motorState,t('laserUnavailable'));}
  }
  function syncVisibility(){
@@ -143,6 +143,8 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   for(const button of modeButtons)setAttribute(button,'aria-pressed',button.dataset.homeMode===lastSignal.mode);
   for(const button of simButtons)setAttribute(button,'aria-pressed',simulated&&(button.dataset.homeSim==='rest'?state==='idle':state==='running'));
   put(signal,t(simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));setAttribute(signal,'data-state',state);
+  put(potteryRpmLabel,unknown?'—':(demoState.angularVelocity*60/(Math.PI*2)).toFixed(1));
+  setAttribute(root,'data-sensor-rpm',unknown?'':lastSignal.rpm);setAttribute(root,'data-pottery-target-rpm',unknown?'':lastSignal.potteryRpm);
   put(rpmLabel,unknown?'—':lastSignal.rpm>0&&lastSignal.rpm<.1?'<0.1':(lastSignal.rpm||0).toFixed(1));
   put(motorState,t(motorCaption()));
   if(state!=='running')applyDemo(demo.step({dt:0,rpm:0,powered:false,reducedMotion:motion.matches}));
@@ -164,12 +166,12 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   setVisible(value){const next=!!value;if(enabled===next)return;enabled=next;syncVisibility();},
   setSignal(value={}){
    let state=['running','idle'].includes(value.state)?value.state:'unknown';const mode=value.mode==='sim'?'sim':'live';
-   if(state==='running'&&number(value.rpm)===null)state='unknown';
-   const rpm=state==='unknown'?null:state==='idle'?0:Math.max(0,value.rpm);
+   if(state==='running'&&(number(value.rpm)===null||value.rpm<0))state='unknown';
+   const rpm=state==='unknown'?null:state==='idle'?0:Math.max(0,value.rpm),potteryRpm=window.Pottery.potteryDrive(rpm);
    let observedAt=number(value.observedAt)??(typeof value.observedAt==='string'&&Number.isFinite(Date.parse(value.observedAt))?Date.parse(value.observedAt):null);
    if(observedAt!==null&&Math.abs(observedAt)>8.64e15)observedAt=null;
-   lastSignal={state,mode,rpm,workUnits:recordValue(value.workUnits),block:recordValue(value.block),observedAt};
-   preview?.setRpm(state==='running'?rpm:0);renderSignal();
+   lastSignal={state,mode,rpm,potteryRpm,workUnits:recordValue(value.workUnits),block:recordValue(value.block),observedAt};
+   preview?.setRpm(state==='running'?potteryRpm:0);renderSignal();
   },
   setPalette(value){if(typeof value!=='string'||!value||value===demoGlaze)return;demoGlaze=value;preview?.setGlaze(value);},
   dispose(){if(disposed)return;disposed=true;observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());preview?.dispose();}

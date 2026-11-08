@@ -20,3 +20,6 @@
 .home-etch-controls{display:flex;align-items:center;gap:18px}.home-etch-status{font:9px/1.5 ui-monospace,monospace;letter-spacing:.02em;color:#96bcb5}.home-intro[data-engraving-phase=scan] .home-etch-status{color:#d7efe8}
 
 @media(max-width:1120px){.home-workpiece{top:50%;bottom:auto;height:calc(100% + 20px);max-height:72vw;transform:translateY(-50%)}}
+
+/* 两个轮子保留各自读数，细传动线连接输入与输出。 */
+.home-reading{gap:13px;align-items:center}.home-speed{display:grid;grid-template-columns:auto auto;gap:5px 5px;align-items:baseline}.home-speed>span{grid-column:1/-1;font-size:9px;color:#a7ada4;letter-spacing:.01em}.home-drive-link{display:grid;gap:6px;justify-items:center;align-self:end;padding-bottom:1px;margin:0 3px}.home-drive-link i{display:block;width:47px;height:1px;background:#7c8476;position:relative}.home-drive-link i:after{content:"";position:absolute;right:0;top:-2px;width:4px;height:4px;border-right:1px solid #a9ad9d;border-top:1px solid #a9ad9d;transform:rotate(45deg)}.home-reading .home-drive-link small{font-size:8px;line-height:1.2;font-family:inherit;color:#8d968b;white-space:nowrap}.home-reading .home-status-led{margin-right:0}
