@@ -6,7 +6,7 @@ A browser-based 3D pottery playground powered by Squeekchain. A real hamster set
 
 **English** · [简体中文](README.zh-CN.md)
 
-[Play in your browser](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/) · [Watch the 41-second film](media/wheel-and-clay-intro.mp4) · [Changelog](CHANGELOG.md)
+[Play in your browser](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/) · [Download the demo · 41s MP4](https://github.com/ananaer/wheel-and-clay/raw/refs/heads/main/media/wheel-and-clay-intro.mp4) · [Changelog](CHANGELOG.md)
 
 [![A hand-shaped double gourd with turquoise flowing glaze in the Wheel & Clay studio, shown in Simulation mode.](media/studio.jpg)](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/)
 

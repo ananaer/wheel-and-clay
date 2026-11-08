@@ -6,7 +6,7 @@
 
 **简体中文** · [English](README.md)
 
-[立即试玩](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/) · [观看 41 秒演示](media/wheel-and-clay-intro.mp4) · [更新记录](CHANGELOG.md)
+[立即试玩](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/) · [下载演示 · 41 秒 MP4](https://github.com/ananaer/wheel-and-clay/raw/refs/heads/main/media/wheel-and-clay-intro.mp4) · [更新记录](CHANGELOG.md)
 
 [![模拟模式下的 Wheel & Clay 工作室：亲手塑造的双葫芦，施以松石青双色流釉。](media/studio.jpg)](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/)
 
