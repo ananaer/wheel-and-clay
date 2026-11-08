@@ -22,3 +22,7 @@ node_modules/
 *.log
 .vscode/
 .idea/
+
+/deploy/pages-site/
+
+/deploy/pages-manifest.json

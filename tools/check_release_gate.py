@@ -6,12 +6,23 @@ import sys
 
 root = Path(__file__).resolve().parents[1]
 scope = sys.argv[1] if len(sys.argv) > 1 else 'all'
-if scope not in ('web', 'film', 'all'):
-    raise SystemExit('Use: python3 tools/check_release_gate.py [web|film|all]')
+if scope not in ('web', 'site', 'film', 'all'):
+    raise SystemExit('Use: python3 tools/check_release_gate.py [web|site|film|all]')
 targets = {'web': root / 'Wheel-and-Clay.html',
+           'site': root / 'deploy' / 'pages-manifest.json',
            'film': root / 'media' / 'wheel-and-clay-intro.mp4'}
 required = list(targets) if scope == 'all' else [scope]
 errors = []
+if 'site' in required:
+    try:
+        sys.path.insert(0, str(root / 'deploy'))
+        from prepare_pages import verify_site
+        site_manifest = json.loads(targets['site'].read_text())
+        verify_site(root / 'deploy' / 'pages-site', site_manifest)
+        if site_manifest['source_sha256'] != hashlib.sha256(targets['web'].read_bytes()).hexdigest():
+            errors.append('site: source changed after split build')
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append('site: invalid deployment manifest: ' + str(exc))
 for reviewer in ('visual', 'motion'):
     manifest = root / 'qa' / 'integration' / (reviewer + '-signoff.json')
     try:

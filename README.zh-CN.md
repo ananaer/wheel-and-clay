@@ -51,6 +51,10 @@ Squeektoshi 的公开跑轮速度经过减速与平滑处理，驱动陶艺转�
 - 分享页的实时／模拟标记描述创作者当时使用的模式，不是硬件认证或所有权证明。
 - 图片分享取决于浏览器支持。X 入口会准备文案和链接，图片附件与最终发布由你本人确认。
 
+## 静态网站构建
+
+运行 `python3 build.py` 后执行 `python3 deploy/prepare_pages.py`，仅发布 `deploy/pages-site/`。小体积 HTML 首页加载带哈希文件名的 CSS 与 JavaScript，保留完整游戏；单文件版用于离线分发，不作为线上首页。拆包边界检查：`python3 tests/test_pages_build.py`。
+
 ## 本地运行
 
 需要 Python 3 和支持 WebGL 的桌面浏览器，无需安装软件包。

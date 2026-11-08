@@ -71,6 +71,8 @@ python3 build.py
 
 This produces `Wheel-and-Clay.html` and `Wheel-and-Clay.zip`. These are generated outputs, not files supplied by a fresh clone.
 
+For static hosting, run `python3 deploy/prepare_pages.py` after building. Deploy only `deploy/pages-site/`: its small HTML entry links to hashed CSS and JavaScript files, while keeping the complete game. The standalone HTML is for offline distribution; it is not the production homepage. Run `python3 tests/test_pages_build.py` to check the packaging boundary.
+
 ### Development checks
 
 The test suite is run with Node.js 24. It uses local fixtures and does not need a wallet or a live API.

@@ -35,6 +35,7 @@ for mode,inject in [('idle',"window.fetch=async()=>new Response(JSON.stringify({
 # 源码包按明确名单导出，研究图、旧生成角色与验收夹不进入提交包。
 source_files=['QUALITY.md','tools/check_release_gate.py','power-link.js','power-link.css','piece-link.js','piece-link.css','index.html','core.js','engine.js','app.js','motion.js','qa-runner.js','opening.js','glazes.js','scene.js','audio.js','activity.js','orders.js','engraving.js','craft-demo.js','home.js','home.css','share.js','share.css','style.css','brand.css','companions.js','companions.css','build.py','README.md','README.zh-CN.md','CHANGELOG.md','BRAND-ASSETS.md','SUBMISSION.md','DEPLOYMENT.md','Wheel-and-Clay.html','vendor/three.module.min.js','vendor/THREE-LICENSE.txt','deploy/prepare.py','deploy/wrangler.toml','tools/rasterize.html']
 source_files += ['brand-research/official/'+name for name in brand_assets]
+source_files += ['deploy/prepare_pages.py']
 source_files += ['media/README.md','media/studio.jpg','media/wheel-and-clay-intro.mp4','media/wheel-and-clay-poster.jpg']
 source_files += [str(path.relative_to(root)) for path in sorted((root/'tests').glob('test_*'))]
 with zipfile.ZipFile(root/'Wheel-and-Clay.zip','w',zipfile.ZIP_DEFLATED) as archive:
