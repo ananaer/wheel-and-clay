@@ -104,3 +104,7 @@ done
 - 本仓库目前未指定项目整体的许可证。
 
 发现问题，或有新的玩法建议？欢迎[提交议题](https://github.com/ananaer/wheel-and-clay/issues)。
+
+## 项目归属验证
+
+squeekchain-project: 1453297a-e446-4298-a8dd-a46da2c48e94

@@ -104,3 +104,7 @@ An independent Squeekchain community project. Pottery, scores and cards are crea
 - This repository does not currently specify a project-wide license.
 
 Found a bug or have a game idea? [Open an issue](https://github.com/ananaer/wheel-and-clay/issues).
+
+## Project verification
+
+squeekchain-project: 1453297a-e446-4298-a8dd-a46da2c48e94
