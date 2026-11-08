@@ -199,14 +199,31 @@ export async function waitForNftMint(hash,account,record,{request=publicKilnRead
 
 // 已广播记录在页面内保留；UI 使用 onState / pending error 持久保存相同引用以跨刷新重查。
 const nftPendingMints=new Map(),nftMintFlights=new Map();
+// 合约自定义错误选择器。发送前模拟失败时把真实原因交给 UI，不再笼统归为网络或测试币。
+const NFT_REVERT_CODES=Object.freeze({'0xad7e29d0':'already_fired','0x7f629f71':'source_mismatch','0x364ad026':'source_mismatch'});
+// 各钱包把 revert 数据放在不同层级（data、data.data、error.data、cause…），统一展开后再查。
+function nftErrorText(error){
+ const parts=[],walk=(value,depth)=>{if(depth>4||value===null||value===undefined)return;if(typeof value==='string'){parts.push(value);return;}if(typeof value==='object')for(const key of ['data','error','cause','originalError','info','message','rpcMessage'])walk(value[key],depth+1);};
+ walk(error,0);return parts.join(' ');
+}
+function nftRevertCode(error){const text=nftErrorText(error).toLowerCase();for(const [selector,code]of Object.entries(NFT_REVERT_CODES))if(text.includes(selector))return code;return null;}
+const nftLowFunds=error=>/insufficient funds/i.test(nftErrorText(error));
+async function nftPreflightError(cause,transaction,request){
+ if(Number(cause?.code)===4001)return cause;
+ let code=nftRevertCode(cause);
+ // 钱包可能吞掉 revert 数据，用公共节点按同样参数只读重放一次来取得真实原因。
+ if(!code&&!nftLowFunds(cause)){try{await request('eth_call',[{from:transaction.from,to:transaction.to,data:transaction.data,value:'0x0'},'latest']);}catch(readError){code=nftRevertCode(readError);}}
+ if(!code&&nftLowFunds(cause))code='insufficient_funds';
+ return code?Object.assign(Error('Mint preflight failed: '+code),{code,cause}):cause;
+}
 // 仅由明确的“Mint”点击调用。无需登录签名、授权、代币转移或私钥。
 export async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CONFIG,onState=()=>{},onProgress=()=>{},signal,request=publicKilnRead,waitOptions={}}={}){
  if(!provider?.request)throw Object.assign(Error('Open in a browser with an Ethereum wallet'),{code:'no_wallet'});
  if(!nftAvailable(config))throw Object.assign(Error('Mint is not deployed'),{code:'not_deployed'});
  const preview=nftFrozenPreview(record),data=encodeMintCall(preview),state=(name,detail)=>nftNotify(onState,name,detail);
  const checkAbort=()=>{if(signal?.aborted)throw new DOMException('Aborted','AbortError');};checkAbort();state('connecting');
- if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId)){checkAbort();state('switching');await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]});}
- if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Error('Use Sepolia testnet');
+ if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId)){checkAbort();state('switching');try{await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]});}catch(cause){if(Number(cause?.code)===4001)throw cause;throw Object.assign(Error('Use Sepolia testnet'),{code:'wrong_network',cause});}}
+ if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Object.assign(Error('Use Sepolia testnet'),{code:'wrong_network'});
  checkAbort();const accounts=await provider.request({method:'eth_requestAccounts'}),account=kilnAddress(accounts?.[0]);if(!account)throw Error('No wallet account');
  const address=kilnAddress(config.address),key=address+':'+account+':'+data;
  if(nftMintFlights.has(key))return nftMintFlights.get(key);
@@ -214,15 +231,18 @@ export async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CO
   let reference=nftPendingMints.get(key);
   try{
    if(!reference){
-    checkAbort();state('checking');await verifyNftDeployment(request,config);
-    const source=await loadKilnRounds({round:preview.kiln.round,count:1,request});
+    checkAbort();state('checking');let source;
+    try{await verifyNftDeployment(request,config);source=await loadKilnRounds({round:preview.kiln.round,count:1,request});}
+    catch(cause){throw Object.assign(cause,{code:cause?.code??'chain_unavailable'});}
     if(!nftSameKiln(source.records[0],preview.kiln))throw Object.assign(Error('The preview does not match the certified round. Re-fire before minting.'),{code:'source_mismatch'});
     checkAbort();
     const transaction={from:account,to:address,data,value:'0x0',chainId:KILN_NETWORK.hexChainId};
-    await provider.request({method:'eth_call',params:[transaction,'latest']});
-    const gas=kilnQuantity(await provider.request({method:'eth_estimateGas',params:[transaction]}));if(gas===0n||gas>3000000n)throw Error('Unexpected gas estimate');transaction.gas='0x'+(gas*12n/10n).toString(16);
+    let estimate;
+    try{await provider.request({method:'eth_call',params:[transaction,'latest']});estimate=await provider.request({method:'eth_estimateGas',params:[transaction]});}
+    catch(cause){throw await nftPreflightError(cause,transaction,request);}
+    const gas=kilnQuantity(estimate);if(gas===0n||gas>3000000n)throw Error('Unexpected gas estimate');transaction.gas='0x'+(gas*12n/10n).toString(16);
     const current=await provider.request({method:'eth_accounts'});if(kilnAddress(current?.[0])!==account||kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Error('Wallet changed. Try again.');
-    checkAbort();state('confirming');const hash=await provider.request({method:'eth_sendTransaction',params:[transaction]});
+    checkAbort();state('confirming');const hash=await provider.request({method:'eth_sendTransaction',params:[transaction]}).catch(cause=>{throw nftLowFunds(cause)&&Number(cause?.code)!==4001?Object.assign(Error('Mint preflight failed: insufficient_funds'),{code:'insufficient_funds',cause}):cause;});
     if(!nftTxUrl(hash))throw Object.assign(Error('Wallet returned no valid reference. Check wallet activity before trying again.'),{code:'submission_unknown',account,contract:address,pending:true});
     reference=nftMintReference(hash,account,config);nftPendingMints.set(key,reference);
    }

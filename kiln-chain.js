@@ -23,6 +23,7 @@ export async function publicKilnRead(method,params=[],{signal,fetcher=globalThis
  try{
   const response=await fetcher(KILN_NETWORK.rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method,params}),signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer'});
   if(!response.ok)throw Error('Chain service unavailable');const result=await response.json();
+  if(result&&!Array.isArray(result)&&result.jsonrpc==='2.0'&&result.id===id&&result.error)throw Object.assign(Error('Chain read failed'),{data:result.error.data,rpcMessage:result.error.message});
   if(!result||Array.isArray(result)||result.jsonrpc!=='2.0'||result.id!==id||Object.hasOwn(result,'error')||!Object.hasOwn(result,'result'))throw Error('Chain read failed');
   return result.result;
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}

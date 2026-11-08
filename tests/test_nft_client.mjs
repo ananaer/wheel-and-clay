@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {nftAvailable,nftPieceUrl,verifyNftDeployment,decodeNftPiece,readNftPiece,encodeMintCall,mintedTokenFromReceipt,waitForNftMint,mintNft} from '../nft-client.js';
-import {KILN_NETWORK,KILN_SELECTORS,kilnWord,kilnWords} from '../kiln-chain.js';
+import {KILN_NETWORK,KILN_SELECTORS,kilnWord,kilnWords,publicKilnRead} from '../kiln-chain.js';
 import {encodePieceDesign} from '../piece-link.js';
 import {coreFixture,chainAbi,chainSetWord,CHAIN_DATA_HASH,CHAIN_BLOCK_HASH} from './test_kiln_chain.mjs';
 
@@ -98,6 +98,38 @@ await check('P1回归：同round/work伪造dataHash必须在钱包发送前拒�
 await check('已认证零work零hash预览可以铸造，模拟/来源标签不会绕过链核验',async()=>{
  const record=testRecord();record.kiln={...record.kiln,work:'0',dataHash:'0x'+'00'.repeat(32)};const fixture=nftFixture({record,core:{work:0n}});const actual=await fixture.mint();assert.equal(actual.kiln.work,'0');assert.equal(sent(fixture).length,1);
  for(const hadSim of [true,false,null]){const forged=testRecord();forged.hadSim=hadSim;forged.kiln.dataHash='0x'+'55'.repeat(32);const test=nftFixture({record:forged});await assert.rejects(test.mint(),error=>error.code==='source_mismatch');assert.equal(sent(test).length,0);}
+});
+await check('重复铸造能从钱包或公共节点识别AlreadyFired，且不广播',async()=>{
+ const revert='0xad7e29d0'+'ab'.repeat(32);
+ // 钱包把 revert 数据放在不同层级
+ for(const shape of [{data:revert},{data:{data:revert}},{error:{data:revert}},{data:{originalError:{data:revert}}}]){
+  const fixture=nftFixture({walletOverride({method}){if(method==='eth_call')throw Object.assign(Error('execution reverted'),{code:-32603},shape);}});
+  await assert.rejects(fixture.mint(),error=>error.code==='already_fired');assert.equal(sent(fixture).length,0);
+ }
+ // 钱包吞掉数据时，用公共节点只读重放拿到真实原因
+ const swallowed=nftFixture({walletOverride({method}){if(method==='eth_call')throw Object.assign(Error('Internal JSON-RPC error'),{code:-32603});}});
+ const read=async(method,params)=>{if(method==='eth_call'&&params[0].data?.startsWith(KILN_SELECTORS.mint))throw Object.assign(Error('Chain read failed'),{data:revert});return swallowed.request(method,params);};
+ await assert.rejects(swallowed.mint({request:read}),error=>error.code==='already_fired');assert.equal(sent(swallowed).length,0);
+});
+await check('发送前失败按真实原因分类，未知错误保留原始信息',async()=>{
+ const funds=nftFixture({walletOverride({method}){if(method==='eth_estimateGas')throw Object.assign(Error('insufficient funds for gas * price + value'),{code:-32000});}});
+ await assert.rejects(funds.mint(),error=>error.code==='insufficient_funds');assert.equal(sent(funds).length,0);
+ const sendFunds=nftFixture({walletOverride({method}){if(method==='eth_sendTransaction')throw Object.assign(Error('wrapped'),{code:-32603,data:{message:'insufficient funds'}});}});
+ await assert.rejects(sendFunds.mint(),error=>error.code==='insufficient_funds');
+ const work=nftFixture({walletOverride({method}){if(method==='eth_call')throw Object.assign(Error('reverted'),{data:'0x7f629f71'+'00'.repeat(64)});}});
+ await assert.rejects(work.mint(),error=>error.code==='source_mismatch');
+ const unknown=nftFixture({walletOverride({method}){if(method==='eth_call')throw Object.assign(Error('Wallet exploded'),{code:-32603});}});
+ await assert.rejects(unknown.mint(),error=>error.code===-32603&&error.message==='Wallet exploded');assert.equal(sent(unknown).length,0);
+ const wrong=nftFixture({walletChain:'0x1',walletOverride({method}){if(method==='wallet_switchEthereumChain')throw Object.assign(Error('Unknown chain'),{code:4902});}});
+ await assert.rejects(wrong.mint(),error=>error.code==='wrong_network');assert.equal(sent(wrong).length,0);
+ const offline=nftFixture();const down=async method=>{if(method==='eth_chainId')throw Error('Chain service unavailable');return null;};
+ await assert.rejects(offline.mint({request:down}),error=>error.code==='chain_unavailable');assert.equal(sent(offline).length,0);
+ const reject=nftFixture({walletOverride({method}){if(method==='eth_call')throw Object.assign(Error('insufficient funds'),{code:4001});}});
+ await assert.rejects(reject.mint(),error=>error.code===4001);
+});
+await check('公共读取失败时保留RPC的revert数据',async()=>{
+ const fetcher=async(_,init)=>{const {id}=JSON.parse(init.body);return {ok:true,json:async()=>({jsonrpc:'2.0',id,error:{code:3,message:'execution reverted',data:'0xad7e29d0'}})};};
+ await assert.rejects(publicKilnRead('eth_call',[{}],{fetcher}),error=>error.message==='Chain read failed'&&error.data==='0xad7e29d0'&&error.rpcMessage==='execution reverted');
 });
 await check('钱包拒绝、切链拒绝和仍在错链均不广播',async()=>{
  for(const rejected of ['eth_requestAccounts','wallet_switchEthereumChain','eth_sendTransaction']){

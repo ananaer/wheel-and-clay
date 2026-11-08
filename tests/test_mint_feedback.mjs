@@ -71,6 +71,18 @@ await check('verification_failed清临时成功并保留防重复锁定，无自
  const gate=deferred();let options;const f=await fixture({pending:{hash,account,record},waitImpl:(_h,_a,_r,o)=>{options=o;return gate.promise;}});
  try{f.ui.resume();f.ui.setVisible(true);await f.runTimer(500);options.onProgress('included',progress());options.onProgress('verification_failed',progress({receiptVerified:false}));gate.reject(Object.assign(Error('mismatch'),{code:'pending',reason:'verification_failed'}));await flush();assert.match(f.q('#kiln-mint-heading').textContent,/needs a check/);assert.equal(successVisible(f),false);assert.equal(f.root.classList.contains('kiln-mint-celebrate'),false);assert.equal(f.q('.kiln-mint').disabled,true);assert.equal(f.ui.isBusy,false);assert.equal([...f.timers.values()].some(x=>x.ms===15000),false);assert.equal(f.pending.hash,hash);noTrustedNft(f);}finally{f.dispose();}
 });
+await check('发送前失败显示真实原因，不再笼统提示Sepolia和测试币',async()=>{
+ const cases=[['already_fired',/already minted this exact piece/],['insufficient_funds',/Not enough Sepolia test ETH/],['wrong_network',/not on Sepolia/],['chain_unavailable',/Could not check/],['wallet_timeout',/has not responded/],[-32002,/has not responded/],[4001,/cancelled/]];
+ const quiet=console.error;console.error=()=>{};
+ try{
+  for(const [code,pattern] of cases){
+   const f=await fixture({mintImpl:async()=>{throw Object.assign(Error('raw'),{code});}});
+   try{await f.ready();await f.click('.kiln-mint');await flush();assert.match(f.q('.kiln-feedback').textContent,pattern);assert.doesNotMatch(f.q('.kiln-feedback').textContent,/test ETH, then retry\.$|raw/);assert.equal(f.pending,null);assert.equal(f.ui.isBusy,false);}finally{f.dispose();}
+  }
+  const f=await fixture({mintImpl:async()=>{throw Object.assign(Error('Wallet\nexploded'),{code:-32603});}});
+  try{await f.ready();await f.click('.kiln-mint');await flush();assert.equal(f.q('.kiln-feedback').textContent,'The mint did not complete. Check your wallet, then retry. (Wallet exploded)');}finally{f.dispose();}
+ }finally{console.error=quiet;}
+});
 await check('reverted立即撤销临时成功，保留交易失败反馈且清pending',async()=>{
  const gate=deferred();let options;const f=await fixture({mintImpl:async(_,o)=>{options=o;o.onState('pending',{hash,account});return gate.promise;}});
  try{await f.ready();await f.click('.kiln-mint');options.onProgress('included',progress());options.onProgress('reverted',progress({receiptVerified:false}));assert.equal(successVisible(f),false);gate.reject(Object.assign(Error('reverted'),{code:'reverted'}));await flush();assert.equal(successVisible(f),false);assert.equal(f.root.classList.contains('kiln-mint-celebrate'),false);assert.equal(f.pending,null);assert.equal(f.ui.isBusy,false);assert.match(f.q('.kiln-feedback').textContent,/did not complete|revert|failed/i);noTrustedNft(f);}finally{f.dispose();}

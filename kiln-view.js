@@ -21,7 +21,13 @@ export function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=
   unavailable:['NFT 正在准备，先收藏这一件。','NFT minting is being prepared. You can keep this piece now.'],
   noWallet:['请在装有以太坊钱包的浏览器里打开本页，再点击铸造。','Open this page in a browser with an Ethereum wallet, then choose Mint.'],
   rejected:['你取消了钱包请求，作品还在这里。','Wallet request cancelled. Your piece is still here.'],
-  mintError:['交易未完成。确认钱包在 Sepolia、有测试币后再试。','The mint did not complete. Check Sepolia and your test ETH, then retry.'],
+  mintError:['铸造没有完成，请打开钱包检查后重试。','The mint did not complete. Check your wallet, then retry.'],
+  mintAlready:['这件作品已用当前钱包在这一轮铸造过，同一设计同一轮只能铸一次。换一轮窑火或改改造型，就能再铸一件。','This wallet already minted this exact piece from this round. Choose another kiln round or change the shape to mint a new one.'],
+  mintFunds:['钱包里的 Sepolia 测试币不够付 gas，领一些后再试。','Not enough Sepolia test ETH for gas. Top up, then retry.'],
+  mintNetwork:['钱包没有切到 Sepolia，请在钱包里手动选择后再试。','Your wallet is not on Sepolia. Select it in your wallet, then retry.'],
+  mintChain:['暂时没能核对链上合约和窑火数据，稍后再试。','Could not check the contract and kiln data onchain. Try again shortly.'],
+  mintWallet:['钱包还没有回应，请打开钱包处理后再试。','Your wallet has not responded. Open it, then retry.'],
+  mintReverted:['交易已上链但执行失败，作品还在这里，可以重新铸造。','The transaction was included but failed. Your piece is still here, and you can retry.'],
   connecting:['连接钱包…','Connecting your wallet…'],switching:['请切换到 Sepolia','Switch to Sepolia'],checking:['核对合约与作品…','Checking the contract and piece…'],confirming:['请在钱包确认铸造','Confirm the mint in your wallet'],pending:['交易已提交','Transaction submitted'],
   pendingHelp:['交易已提交。请核对这笔交易，勿重复铸造。','Your transaction was sent. Check this transaction before trying another mint.'],unknownHelp:['钱包未返回有效交易编号。请先查钱包活动，勿重复铸造；若已提交，可粘贴交易哈希核验。','The wallet returned no transaction reference. Check wallet activity before minting again; paste its transaction hash if it was sent.'],hashLabel:['钱包中的交易哈希','Transaction hash from your wallet'],recheck:['检查交易状态','Check transaction'],transaction:['查看交易 ↗','View transaction ↗'],openNft:['打开这件 NFT ↗','Open your NFT ↗'],
   mintSent:['交易已提交','Transaction submitted'],mintIncluded:['铸造完成','Mint complete'],mintVerifying:['正在校验作品','Checking your piece'],mintRestoring:['正在找回这笔铸造','Finding your mint'],mintRetrying:['连接暂时中断，正在重试','Connection interrupted. Reconnecting…'],mintPaused:['连接尚未恢复，可重新检查这笔交易。','Still unable to reconnect. Recheck this transaction.'],mintCheckFailed:['交易记录需要进一步核对。请查看交易或重新检查，无需再铸造。','This transaction needs another check. Inspect it or recheck; do not mint again.'],mintIncludedHelp:['交易已成功。作品核验在后台继续，你可以继续创作。','Your mint succeeded. Artwork verification continues in the background. You can keep creating.'],mintVerifyHelp:['核对器形、釉色和回合来源。','Matching the shape, glaze and round provenance.'],mintSentHelp:['交易正在等待打包。你可以继续创作，进度会保留在这里。','Your transaction is awaiting inclusion. Keep creating; its progress is saved here.'],mintConfirmations:['后续区块','FOLLOWING BLOCKS'],mintSteps:['发送 · 上链 · 校验','SENT · ONCHAIN · VERIFIED'],mintSuccessTitle:['这一件，\n已上链。','Your piece.\nOnchain.'],mintSuccessLead:['你的手艺与它的火候，已经一起封存。','Your hands. His fire. Sealed together.'],mintSuccessLabel:['铸造完成','MINT COMPLETE'],mintSuccessHelp:['器形、釉色与轮次来源已保存至合约。','Shape, glaze and round provenance saved in the contract.'],mintShare:['分享这件作品','Share your piece'],mintStamp:['链上封存','SEALED ONCHAIN'],mintChecking:['核验中','CHECKING'],
@@ -36,7 +42,9 @@ export function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=
  const t=key=>text[key][lang()==='zh'?0:1],q=s=>root.querySelector(s),all=s=>root.querySelectorAll(s),put=(s,value)=>{const el=q(s);if(el&&el.textContent!==String(value))el.textContent=String(value);};
  let base=null,records=[],proof=null,selected=null,state='empty',view=null,visible=false,sceneReady=false,gen=0,raf=0,elapsed=0,lastFrame=0,compare=false,error='',mintState='',mintInfo=null,minted=null,busy=false,disposed=false;
  let mintProgress=null,mintPhase='',mintController=null,resumeTimer=0,resumeAttempts=0,celebrationTimer=0,celebrationPending=null;
- let sourceVerified=false,tracking=false,mintAttached=false,mintErrorKey='',completedJob=null,jobSerial=0;const celebrated=new Set();
+ let sourceVerified=false,tracking=false,mintAttached=false,mintErrorKey='',completedJob=null,jobSerial=0,errorDetail='';const celebrated=new Set();
+ const mintFailureKeys={source_mismatch:'mismatch',4001:'rejected',no_wallet:'noWallet',already_fired:'mintAlready',insufficient_funds:'mintFunds',wrong_network:'mintNetwork',chain_unavailable:'mintChain',wallet_timeout:'mintWallet','-32002':'mintWallet'};
+ const mintFailureKey=err=>Object.hasOwn(mintFailureKeys,String(err?.code))?mintFailureKeys[String(err.code)]:'mintError';
  const pendingKey='wheel-clay-pending-mint-v1';
  const readPending=()=>{try{const p=JSON.parse(localStorage.getItem(pendingKey));return p&&(nftTxUrl(p.hash)||p.unknown===true)&&/^0x[0-9a-f]{40}$/i.test(p.account)&&cleanPieceRecord(p.record)?.kiln?p:null;}catch{return null;}};
  const persistPending=()=>{try{if(mintInfo)localStorage.setItem(pendingKey,JSON.stringify(mintInfo));else localStorage.removeItem(pendingKey);}catch{/* 链接仍保留在当前页面，不隐藏已提交交易。 */}};
@@ -100,7 +108,7 @@ export function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=
   q('.kiln-background-pending').hidden=mintAttached||!mintInfo&&!completedJob||!!minted;q('.kiln-background-pending').disabled=busy||state==='firing';put('.kiln-background-pending',t(mintInfo?'background':'backgroundReady'));
   q('.kiln-nft-link').hidden=!minted;if(minted){q('.kiln-nft-link').href=nftPieceUrl(minted.nft.tokenId,lang());put('#kiln-title',t('mintSuccessTitle'));put('.kiln-intro',t('mintSuccessLead'));put('.kiln-keep',t('mintShare'));}
   q('.kiln-hash-entry').hidden=!(mintAttached&&(mintInfo?.unknown||mintInfo?.manual));q('.kiln-tx').hidden=!mintInfo?.hash;q('.kiln-pending-actions').hidden=!mintInfo||!mintAttached;q('.kiln-recheck').disabled=busy||tracking;if(mintInfo)q('.kiln-tx').href=nftTxUrl(mintInfo.hash);
-  put('.kiln-feedback',mintState==='saving'?t('saving'):mintAttached&&mintInfo&&!mintInfo.unknown?'':mintState?t(mintState):error?t(error):mintAttached&&mintInfo?t('unknownHelp'):'');
+  put('.kiln-feedback',mintState==='saving'?t('saving'):mintAttached&&mintInfo&&!mintInfo.unknown?'':mintState?t(mintState):error?t(error)+(error==='mintError'&&errorDetail?' ('+errorDetail+')':''):mintAttached&&mintInfo?t('unknownHelp'):'');
   q('.kiln-plain').hidden=state==='fired'||state==='firing'||mintAttached&&!!mintInfo;q('.kiln-plain').disabled=busy||!base||!sceneReady;
   renderMintStatus();
  }
@@ -143,7 +151,7 @@ export function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=
   clearTimeout(celebrationTimer);celebrationTimer=setTimeout(()=>root.classList.remove('kiln-mint-celebrate'),2600);
  }
  function confirmationError(err){
-  if(err?.code==='reverted'){const attached=mintAttached;mintInfo=null;mintProgress=null;mintPhase='';mintAttached=false;persistPending();clearCelebration();if(attached&&state==='fired')error='mintError';}
+  if(err?.code==='reverted'){const attached=mintAttached;mintInfo=null;mintProgress=null;mintPhase='';mintAttached=false;persistPending();clearCelebration();if(attached&&state==='fired'){error='mintReverted';errorDetail='';}}
   else if(mintInfo){mintErrorKey=err?.reason==='verification_failed'||err?.reason==='invalid_saved_preview'?'mintCheckFailed':'mintPaused';if(mintErrorKey==='mintCheckFailed'){mintProgress={...mintProgress,receiptVerified:false};mintPhase='checking';clearCelebration();}}
  }
  async function mint(){
@@ -159,7 +167,7 @@ export function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=
   }catch(err){
    if(disposed||serial!==jobSerial)return;
    if(err?.code==='submission_unknown'){mintInfo={unknown:true,account:err.account,record};mintAttached=true;persistPending();error='unknownHelp';}
-   else if(mintInfo)confirmationError(err);else error=err?.code==='source_mismatch'?'mismatch':err?.code===4001?'rejected':err?.code==='no_wallet'?'noWallet':'mintError';
+   else if(mintInfo)confirmationError(err);else{error=mintFailureKey(err);errorDetail=error==='mintError'?String(err?.shortMessage||err?.message||'').replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,140):'';console.error('[mint] failed before submission',err);}
   }finally{notifyWallet();if(serial===jobSerial){if(!released){busy=false;mintState='';}tracking=false;mintController=null;if(!disposed){render();scheduleResume(15000);}}}
  }
  async function recheck(automatic=false){
