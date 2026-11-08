@@ -39,7 +39,7 @@ Squeektoshi's public wheel-speed data drives a reduced, smoothed pottery-wheel s
 
 - **Live:** reads the public `GET https://api.squeekchain.com/v1/status` endpoint every eight seconds. After a valid running sample, a 90-second buffer prevents a brief zero reading or connection gap from abruptly interrupting a piece. Raw readings remain separate from buffered game power; missing data is never reported as a confirmed stop.
 - **Simulation:** offers Steady, Sprint and Rest through the same game mechanics, with a visible simulation label. Rest takes effect without the Live buffer. A piece that used simulated power keeps that label.
-- **First visit:** the landing demonstration starts with clearly labelled simulated power. While you are on the homepage, it may switch to fresh running hardware data. Entering the studio or choosing a source locks that choice for your session.
+- **Default power:** on arrival, fresh hardware data with a wheel speed above zero takes priority; otherwise the site uses clearly labelled simulated power. Direct studio links follow the same rule after one signal check. Starting to create or choosing a source locks that choice for your session.
 
 The homepage's shaping, glazing and laser-engraving sequence is a separate introduction. Laser engraving is not a player-operated studio tool.
 

@@ -100,7 +100,7 @@ let feedRpm=0,sensorRpm=0;
 const studioPowerLink=createPowerLink({root:$('studio-power-link'),lang:()=>lang,inputId:'rpm',outputId:'pottery-rpm'});
 function animatePartner(dt){studioPowerLink.tick(dt,studio?.rpm||0);}
 function commit(){history.push(values,form);dirty=true;render();}
-function sculpt(center,delta,brush,rpm){if(saving)return false;if(orders&&!orders.canSculpt)return false;if(mode==='live'&&snapshot().state==='unknown')return false;const next=P.sculpt(values,center,delta,brush,rpm);if(!P.changed(values,next))return false;values=next;studio?.setProfile(values,form);dirty=true;if(mode==='sim')hadSim=true;else apiSample=snapshot().observedAt;orders?.markEdited();return true;}
+function sculpt(center,delta,brush,rpm){if(saving)return false;if(orders&&!orders.canSculpt)return false;if(mode==='live'&&snapshot().state==='unknown')return false;const next=P.sculpt(values,center,delta,brush,rpm);if(!P.changed(values,next))return false;values=next;studio?.setProfile(values,form);dirty=true;opening.settle();if(mode==='sim')hadSim=true;else apiSample=snapshot().observedAt;orders?.markEdited();return true;}
 try{studio=trackedStudio($('scene'),{prewarm:true,background:'#101114',sealUrl:'./brand-research/official/squeekchain-hamster-mark.svg',onReady(){ready=true;$('loading').hidden=true;},onBlocked(){toast(t(snapshot().state==='unknown'?'blockedUnknown':'blocked'));},canSculpt:()=>snapshot().state!=='unknown'&&(!orders||orders.canSculpt),onStrokeStart(){},onSculpt:sculpt,onStrokeEnd:commit,onTick(rpm,dt){if(studioActive()){if(snapshot().state!=='unknown')turns+=rpm*dt/60;tickCount++;animatePartner(dt);orders?.tick(rpm,dt);}if(soundReady)sound.update(studioActive()&&snapshot().state!=='unknown'&&phase==='shape'?rpm:0);}});}catch(error){console.error('Studio initialization failed',error);$('loading').hidden=true;$('webgl-error').hidden=false;document.querySelectorAll('.tools button').forEach(b=>b.disabled=true);}
 studio?.setGlaze(glaze);
 // 首次进入创作的手势可启动音乐；手动静音会保留，离开浏览器淡出关闭。
@@ -123,7 +123,7 @@ function scrollToSection(id){
  el.scrollIntoView({behavior:reducedMotion.matches?'instant':'smooth',block:'start'});
  el.querySelector('h1,h2')?.focus({preventScroll:true});
 }
-function lockOpening(){if(opening.automatic){opening.lock();if(mode==='sim')hadSim=true;}}
+function lockOpening(){if(opening.automatic){opening.lock();if(!opening.automatic&&mode==='sim')hadSim=true;}}
 function enterFromHome(nextMode){
  lockOpening();
  if(nextMode&&nextMode!==mode)switchMode(nextMode);
@@ -167,7 +167,7 @@ async function poll(){
   let data;try{data=await response.json();}catch{attemptError='invalid';throw Error('Invalid response');}
   if(gen===generation){raw=data;failed=false;connectionError='';lastSuccessAt=Date.now();lastReceivedSample=C.normalizeStatus(data).observedAt;}
  }catch{if(gen===generation){raw=null;failed=true;connectionError=timedOut?'timeout':attemptError||'network';}}
- finally{clearTimeout(timeout);if(gen===generation){pending=false;controller=null;hasAttempt=true;responseStatus=attemptStatus;responseMs=Date.now()-requestStart;if(opening.automatic){const source=failed?{state:'unknown',rpm:null}:C.normalizeStatus(raw),buffered=livePowerBuffer.update(source,performance.now());mode=opening.observe({state:buffered.powerState,rpm:buffered.powerRpm});}render();}}
+ finally{clearTimeout(timeout);if(gen===generation){pending=false;controller=null;hasAttempt=true;responseStatus=attemptStatus;responseMs=Date.now()-requestStart;if(opening.automatic){const source=failed?{state:'unknown',rpm:null}:C.normalizeStatus(raw),buffered=livePowerBuffer.update(source,performance.now());mode=opening.observe({state:buffered.powerState,rpm:buffered.powerRpm});if(!opening.automatic&&mode==='sim'){hadSim=true;orders?.markSourceMode();}}render();}}
 }
 function switchMode(next){if(next!==mode)livePowerBuffer.reset();opening.choose(next);if(next==='sim')hadSim=true;if(next===mode)return;generation++;controller?.abort();controller=null;pending=false;raw=null;failed=false;connectionError='';responseStatus=0;hasAttempt=false;lastSuccessAt=0;lastReceivedSample=0;responseMs=0;lastPoll=0;mode=next;write('wheel-clay-mode',mode);syncPreference('mode',mode);if(mode==='sim')hadSim=true;orders?.markSourceMode();render();if(next==='live'){poll();pollActivity();}}
 function setPhase(next){if(saving&&next!=='glaze')return;if(next===phase)return;phase=next;studio?.setPhase(next);render();}
