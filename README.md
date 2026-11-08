@@ -63,6 +63,8 @@ Finish and collect your piece, then choose **Copy piece link**. The receiver can
 
 **Mint this piece** is an optional Sepolia ERC-721 transaction. Your wallet asks you to confirm it; gas is paid with Sepolia test ETH. The collection charges no mint fee. Ordinary firing, local collection and sharing remain available without a wallet.
 
+The page distinguishes transaction inclusion, the following 12 blocks, and final artwork verification. A brief connection loss is retried; reopening the kiln resumes the saved transaction without sending another mint. The completion reveal and NFT link appear only after the artwork checks pass.
+
 The NFT freezes the complete 270-byte 3D design, the selected glaze and the round's work and data hash. Its on-chain metadata includes a **2D profile preview**; the website reconstructs the full 3D piece from contract data at `?nft=TOKEN_ID`. A verified NFT view shows its maker and current owner with explorer links. Stored local labels alone do not establish NFT ownership.
 
 This is the independent **Wheel & Clay** pottery collection, not the official Squeeks collection. Choosing a historical round does not prove that the piece was made during that round. Squeekchain's source Core is upgradeable: source checks do not remove its governance trust. Once minted, a piece's frozen design and metadata are unaffected by later Core changes.

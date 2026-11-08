@@ -69,78 +69,157 @@ export function mintedTokenFromReceipt(receipt,account,address,hash=receipt?.tra
  const matches=nftReceiptLogs(receipt,address).filter(log=>log.topics.length===4&&log.topics[0].toLowerCase()===NFT_TRANSFER_TOPIC&&log.topics[1]===NFT_ZERO_HASH&&log.topics[2].toLowerCase()==='0x'+kilnWord(BigInt(account))&&log.data==='0x');
  if(matches.length!==1)throw Error('Mint receipt has no unique matching NFT');return nftTokenId(BigInt(matches[0].topics[3]));
 }
-function nftVerifyFired(receipt,actual,address){
+function nftFiredDesignHash(receipt,tokenId,maker,kiln,address){
  const logs=nftReceiptLogs(receipt,address).filter(log=>log.topics.length===4&&log.topics[0].toLowerCase()===NFT_FIRED_TOPIC);
  if(logs.length!==1)throw Error('Missing PieceFired event');
  const log=logs[0],data=kilnWords(log.data);
- if(data.length!==2||log.topics[1].toLowerCase()!=='0x'+kilnWord(actual.nft.tokenId)||log.topics[2].toLowerCase()!=='0x'+kilnWord(BigInt(actual.maker))||log.topics[3].toLowerCase()!=='0x'+kilnWord(actual.kiln.round)||kilnUint(data[0],64)!==BigInt(actual.kiln.work)||'0x'+data[1]!==actual.designHash)throw Error('PieceFired differs from the minted piece');
+ if(data.length!==2||log.topics[1].toLowerCase()!=='0x'+kilnWord(tokenId)||log.topics[2].toLowerCase()!=='0x'+kilnWord(BigInt(maker))||log.topics[3].toLowerCase()!=='0x'+kilnWord(kiln.round)||kilnUint(data[0],64)!==BigInt(kiln.work)||'0x'+data[1]===NFT_ZERO_HASH)throw Error('PieceFired differs from the minted piece');
+ return '0x'+data[1];
+}
+function nftVerifyFired(receipt,actual,address){
+ if(nftFiredDesignHash(receipt,actual.nft.tokenId,actual.maker,actual.kiln,address)!==actual.designHash)throw Error('PieceFired differs from the minted piece');
 }
 function nftMintReference(hash,account,config){return {transactionHash:hash.toLowerCase(),hash:hash.toLowerCase(),account:kilnAddress(account),contract:kilnAddress(config.address),chainId:KILN_NETWORK.chainId};}
-function nftPendingError(reference,cause,reason='unconfirmed'){
- return Object.assign(Error('Transaction sent; confirmation is incomplete. Recheck this transaction before minting again.'),reference,{code:'pending',pending:true,reason,...(cause?{cause}: {})});
+function nftNotify(callback,state,detail){
+ // UI观察器不能决定交易结果；同步异常、异步reject都不打断跟踪。
+ if(typeof callback!=='function')return;
+ try{Promise.resolve(callback(state,detail&&Object.freeze({...detail}))).catch(()=>{});}catch{}
+}
+function nftPendingError(reference,cause,reason='unconfirmed',observed={}){
+ return Object.assign(Error(reason==='aborted'?'Transaction tracking paused. Resume checking the saved transaction.':'Transaction sent; verification is incomplete. Recheck this transaction before minting again.'),reference,observed,{code:'pending',pending:true,reason,...(cause?{cause}: {})});
+}
+function nftAborted(){return Object.assign(Error('Transaction tracking aborted'),{code:'nft_aborted'});}
+function nftDelay(ms,{signal}={}){
+ return new Promise((resolve,reject)=>{
+  if(signal?.aborted){reject(nftAborted());return;}
+  const abort=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);reject(nftAborted());};
+  const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},ms);signal?.addEventListener('abort',abort,{once:true});
+ });
+}
+function nftInterruptible(operation,{signal,timeoutMs}){
+ return new Promise((resolve,reject)=>{
+  const controller=new AbortController();let done=false,timer;
+  const finish=(fn,value)=>{if(done)return;done=true;clearTimeout(timer);signal?.removeEventListener('abort',abort);fn(value);};
+  const abort=()=>{controller.abort();finish(reject,nftAborted());};
+  if(signal?.aborted){abort();return;}
+  signal?.addEventListener('abort',abort,{once:true});
+  timer=setTimeout(()=>{controller.abort();finish(reject,Object.assign(Error('Chain request timed out'),{code:'nft_rpc_error'}));},timeoutMs);
+  Promise.resolve().then(()=>operation(controller.signal)).then(value=>finish(resolve,value),error=>finish(reject,signal?.aborted?nftAborted():error));
+ });
 }
 
-export async function waitForNftMint(hash,account,record,{request=publicKilnRead,config=NFT_CONFIG,attempts=60,delay=ms=>new Promise(r=>setTimeout(r,ms))}={}){
- if(!nftTxUrl(hash)||!kilnAddress(account)||!nftAvailable(config)||!Number.isInteger(attempts)||attempts<0||attempts>120||typeof delay!=='function')throw Error('Invalid mint reference');
- const reference=nftMintReference(hash,account,config);let expected;
- try{expected=nftFrozenPreview(record);}catch(error){throw nftPendingError(reference,error,'invalid_saved_preview');}
- try{
-  for(let i=0;i<attempts;i++){
-   const receipt=await request('eth_getTransactionReceipt',[reference.transactionHash]);
+export async function waitForNftMint(hash,account,record,{request=publicKilnRead,config=NFT_CONFIG,attempts=60,delay=nftDelay,onProgress=()=>{},signal,maxRpcRetries=3,pollIntervalMs=4000,retryDelayMs=1500,requestTimeoutMs=15000}={}){
+ if(!nftTxUrl(hash)||!kilnAddress(account)||!nftAvailable(config)||!Number.isInteger(attempts)||attempts<0||attempts>120||typeof delay!=='function'||!Number.isInteger(maxRpcRetries)||maxRpcRetries<0||maxRpcRetries>8||![pollIntervalMs,retryDelayMs].every(value=>Number.isFinite(value)&&value>=0&&value<=30000)||!Number.isFinite(requestTimeoutMs)||requestTimeoutMs<1||requestTimeoutMs>60000)throw Error('Invalid mint reference');
+ const reference=nftMintReference(hash,account,config),observed={stage:'submitted',lastObservedStage:'submitted',tokenId:null,confirmedBlocks:0,requiredDepth:12,blockNumber:null,blockHash:null};
+ let expected,rpcRetries=0,chainChecked=false,lastProgress='';
+ const progress=(state,extra={})=>{const detail={...reference,...observed,...extra},key=state+JSON.stringify(detail);if(key!==lastProgress){lastProgress=key;nftNotify(onProgress,state,detail);}};
+ const observe=changes=>{Object.assign(observed,changes);observed.lastObservedStage=observed.stage;};
+ const read=async(method,params)=>{
+  try{return await nftInterruptible(childSignal=>request(method,params,{signal:childSignal}),{signal,timeoutMs:requestTimeoutMs});}
+  catch(error){if(error.code==='nft_aborted')throw error;throw Object.assign(Error('Chain request failed'),{code:'nft_rpc_error',cause:error});}
+ };
+ const pause=ms=>nftInterruptible(childSignal=>delay(ms,{signal:childSignal}),{signal,timeoutMs:ms+1000});
+ const unresolved=(reason,cause)=>{
+  const retryInfo=reason==='network_retry_exhausted'?{retryCount:Math.min(Math.max(0,rpcRetries-1),maxRpcRetries),maxRetries:maxRpcRetries}:{};
+  progress(reason==='aborted'?'aborted':reason==='verification_failed'||reason==='invalid_saved_preview'?'verification_failed':'pending',{reason,...retryInfo});
+  return nftPendingError(reference,cause,reason,{...observed,...retryInfo});
+ };
+ try{expected=nftFrozenPreview(record);}catch(error){throw unresolved('invalid_saved_preview',error);}
+ progress('pending');
+ for(let i=0;i<attempts;i++){
+  try{
+   if(signal?.aborted)throw nftAborted();
+   if(!chainChecked){if(kilnQuantity(await read('eth_chainId',[]))!==BigInt(KILN_NETWORK.chainId))throw Error('Wrong receipt network');chainChecked=true;}
+   const receipt=await read('eth_getTransactionReceipt',[reference.transactionHash]);
    if(receipt){
     nftReceiptIdentity(receipt,reference.account,reference.contract,reference.transactionHash);
-    const header=await request('eth_getBlockByNumber',[receipt.blockNumber,false]);
+    const header=await read('eth_getBlockByNumber',[receipt.blockNumber,false]);
     if(header?.hash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(header.number)!==BigInt(receipt.blockNumber))throw Error('Receipt block is no longer canonical');
-    const tip=kilnQuantity(await request('eth_blockNumber',[]));
-    if(tip<BigInt(receipt.blockNumber))throw Error('Receipt is beyond the chain tip');
-    // 与来源读取一样，等到 tip-12 覆盖该交易区块，再宣布成功或回滚。
-    if(tip-BigInt(receipt.blockNumber)>=12n){
-     const tokenId=mintedTokenFromReceipt(receipt,reference.account,reference.contract,reference.transactionHash);
-     const actual=await readNftPiece(tokenId,{request,config,blockTag:receipt.blockNumber});
+    if(receipt.status==='0x0'){
+     if(receipt.logs.length!==0)throw Error('Reverted receipt contains logs');
+     observe({stage:'reverted',blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase()});progress('reverted');
+     throw Object.assign(Error('Mint transaction reverted'),reference,{...observed,code:'reverted',pending:false});
+    }
+    const tokenId=mintedTokenFromReceipt(receipt,reference.account,reference.contract,reference.transactionHash);
+    nftFiredDesignHash(receipt,tokenId,reference.account,expected.kiln,reference.contract);
+    const sameBlock=observed.blockHash===receipt.blockHash.toLowerCase();
+    observe({stage:'included',tokenId,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase(),confirmedBlocks:sameBlock?observed.confirmedBlocks:0});progress('included');
+    const tip=kilnQuantity(await read('eth_blockNumber',[]));if(tip<BigInt(receipt.blockNumber))throw Error('Receipt is beyond the chain tip');
+    const depth=tip-BigInt(receipt.blockNumber);observe({confirmedBlocks:Number(depth>12n?12n:depth)});progress('included');
+    // 上链立即可见；只有tip-12覆盖交易且完整作品校验通过才宣布verified。
+    if(depth>=12n){
+     observe({stage:'verifying'});progress('verifying');
+     // 普通RPC会裁剪旧state；不可变设计在本次tip-12读取，不要求交易区块的archive state。
+     // 交易证明仍固定在原receipt区块，所有作品/代码/owner读取共用同一个近期确认snapshot。
+     const stateBlockNumber='0x'+(tip-12n).toString(16);
+     if(BigInt(stateBlockNumber)<BigInt(receipt.blockNumber))throw Error('Verification snapshot predates the mint');
+     const stateHeader=await read('eth_getBlockByNumber',[stateBlockNumber,false]);
+     if(!stateHeader||kilnQuantity(stateHeader.number)!==BigInt(stateBlockNumber)||!/^0x[0-9a-f]{64}$/i.test(stateHeader.hash)||stateHeader.hash===NFT_ZERO_HASH)throw Error('Unknown verification snapshot');
+     const stateBlockHash=stateHeader.hash.toLowerCase();
+     const actual=await readNftPiece(tokenId,{request:read,config,blockTag:stateBlockNumber});
      if(actual.maker!==reference.account||encodePieceDesign(actual)!==encodePieceDesign(expected)||!nftSameKiln(actual.kiln,expected.kiln))throw Error('Minted piece differs from the preview');
      nftVerifyFired(receipt,actual,reference.contract);
-     const finalHeader=await request('eth_getBlockByNumber',[receipt.blockNumber,false]);if(finalHeader?.hash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(finalHeader.number)!==BigInt(receipt.blockNumber))throw Error('Receipt block changed while checking');
-     return {...actual,nft:{...actual.nft,transactionHash:reference.transactionHash,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase()}};
+     const finalStateHeader=await read('eth_getBlockByNumber',[stateBlockNumber,false]);if(finalStateHeader?.hash?.toLowerCase()!==stateBlockHash||kilnQuantity(finalStateHeader.number)!==BigInt(stateBlockNumber))throw Error('Verification snapshot changed while checking');
+     const finalHeader=await read('eth_getBlockByNumber',[receipt.blockNumber,false]);if(finalHeader?.hash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(finalHeader.number)!==BigInt(receipt.blockNumber))throw Error('Receipt block changed while checking');
+     const result={...actual,nft:{...actual.nft,transactionHash:reference.transactionHash,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase(),stateBlockNumber,stateBlockHash}};
+     observe({stage:'verified'});progress('verified');return result;
     }
+   }else{
+    // 先前包含过也可能暂时查不到或被重组移除；当前阶段必须退回submitted。
+    // lastObservedStage仅是历史，不能用来恢复已失去证据的token或确认数。
+    Object.assign(observed,{stage:'submitted',tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});
+    progress('pending',{reason:observed.lastObservedStage==='submitted'?'awaiting_receipt':'receipt_unavailable'});
    }
-   if(i+1<attempts)await delay(4000);
+   rpcRetries=0;
+   if(i+1<attempts)await pause(pollIntervalMs);
+  }catch(error){
+   if(error.code==='reverted')throw error;
+   if(error.code==='nft_aborted'||signal?.aborted)throw unresolved('aborted',error);
+   if(error.code==='nft_rpc_error'){
+    rpcRetries++;const retry=rpcRetries<=maxRpcRetries&&i+1<attempts,waitMs=retry?Math.min(retryDelayMs*2**(rpcRetries-1),8000):0;
+    if(!retry)throw unresolved('network_retry_exhausted',error);
+    progress('retrying',{retryCount:rpcRetries,maxRetries:maxRpcRetries,retryAfterMs:waitMs});
+    try{await pause(waitMs);}catch(pauseError){throw unresolved(pauseError.code==='nft_aborted'||signal?.aborted?'aborted':'network_retry_exhausted',pauseError);}
+    continue;
+   }
+   throw unresolved('verification_failed',error);
   }
- }catch(error){
-  if(error.code==='reverted')throw Object.assign(error,reference,{pending:false});
-  throw nftPendingError(reference,error,'verification_incomplete');
  }
- throw nftPendingError(reference,null,'confirmation_timeout');
+ throw unresolved(signal?.aborted?'aborted':'confirmation_timeout');
 }
 
 // 已广播记录在页面内保留；UI 使用 onState / pending error 持久保存相同引用以跨刷新重查。
 const nftPendingMints=new Map(),nftMintFlights=new Map();
 // 仅由明确的“Mint”点击调用。无需登录签名、授权、代币转移或私钥。
-export async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CONFIG,onState=()=>{},request=publicKilnRead,waitOptions={}}={}){
+export async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CONFIG,onState=()=>{},onProgress=()=>{},signal,request=publicKilnRead,waitOptions={}}={}){
  if(!provider?.request)throw Object.assign(Error('Open in a browser with an Ethereum wallet'),{code:'no_wallet'});
  if(!nftAvailable(config))throw Object.assign(Error('Mint is not deployed'),{code:'not_deployed'});
- const preview=nftFrozenPreview(record),data=encodeMintCall(preview);onState('connecting');
- if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId)){onState('switching');await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]});}
+ const preview=nftFrozenPreview(record),data=encodeMintCall(preview),state=(name,detail)=>nftNotify(onState,name,detail);
+ const checkAbort=()=>{if(signal?.aborted)throw new DOMException('Aborted','AbortError');};checkAbort();state('connecting');
+ if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId)){checkAbort();state('switching');await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]});}
  if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Error('Use Sepolia testnet');
- const accounts=await provider.request({method:'eth_requestAccounts'}),account=kilnAddress(accounts?.[0]);if(!account)throw Error('No wallet account');
+ checkAbort();const accounts=await provider.request({method:'eth_requestAccounts'}),account=kilnAddress(accounts?.[0]);if(!account)throw Error('No wallet account');
  const address=kilnAddress(config.address),key=address+':'+account+':'+data;
  if(nftMintFlights.has(key))return nftMintFlights.get(key);
  const run=(async()=>{
   let reference=nftPendingMints.get(key);
   try{
    if(!reference){
-    onState('checking');await verifyNftDeployment(request,config);
+    checkAbort();state('checking');await verifyNftDeployment(request,config);
     const source=await loadKilnRounds({round:preview.kiln.round,count:1,request});
     if(!nftSameKiln(source.records[0],preview.kiln))throw Object.assign(Error('The preview does not match the certified round. Re-fire before minting.'),{code:'source_mismatch'});
+    checkAbort();
     const transaction={from:account,to:address,data,value:'0x0',chainId:KILN_NETWORK.hexChainId};
     await provider.request({method:'eth_call',params:[transaction,'latest']});
     const gas=kilnQuantity(await provider.request({method:'eth_estimateGas',params:[transaction]}));if(gas===0n||gas>3000000n)throw Error('Unexpected gas estimate');transaction.gas='0x'+(gas*12n/10n).toString(16);
     const current=await provider.request({method:'eth_accounts'});if(kilnAddress(current?.[0])!==account||kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Error('Wallet changed. Try again.');
-    onState('confirming');const hash=await provider.request({method:'eth_sendTransaction',params:[transaction]});
+    checkAbort();state('confirming');const hash=await provider.request({method:'eth_sendTransaction',params:[transaction]});
     if(!nftTxUrl(hash))throw Object.assign(Error('Wallet returned no valid reference. Check wallet activity before trying again.'),{code:'submission_unknown',account,contract:address,pending:true});
     reference=nftMintReference(hash,account,config);nftPendingMints.set(key,reference);
    }
-   onState('pending',{...reference});
-   const result=await waitForNftMint(reference.transactionHash,account,preview,{...waitOptions,request,config});nftPendingMints.delete(key);return result;
+   state('pending',{...reference});
+   const progress=(name,detail)=>{nftNotify(onProgress,name,detail);if(waitOptions.onProgress!==onProgress)nftNotify(waitOptions.onProgress,name,detail);};
+   const result=await waitForNftMint(reference.transactionHash,account,preview,{...waitOptions,request,config,signal:signal??waitOptions.signal,onProgress:progress});nftPendingMints.delete(key);return result;
   }catch(error){
    if(reference){
     if(error.code==='reverted'){nftPendingMints.delete(key);throw Object.assign(error,reference,{pending:false});}

@@ -132,11 +132,11 @@ await check('唯一Transfer与PieceFired互相核对，重复/缺失/伪造事�
  ]){const fixture=nftFixture();mutate(fixture.receipt);await pending(fixture.wait());}
  const fixture=nftFixture();assert.equal(mintedTokenFromReceipt(fixture.receipt,NFT_TEST_ACCOUNT,fixture.config.address,NFT_TEST_HASH),'7');
 });
-await check('只有身份及规范区块确认后的回滚才返回reverted并解除pending',async()=>{
+await check('身份及规范区块通过的status0尽早返回reverted，不必等待12块',async()=>{
  const fixture=nftFixture();fixture.receipt.status='0x0';fixture.receipt.logs=[];
  await assert.rejects(fixture.wait(),error=>error.code==='reverted'&&error.pending===false&&error.transactionHash===NFT_TEST_HASH&&error.account===NFT_TEST_ACCOUNT);
  fixture.receipt.from=NFT_TEST_OTHER;await pending(fixture.wait());
- const unconfirmed=nftFixture({core:{tip:'0x6f'}});unconfirmed.receipt.status='0x0';unconfirmed.receipt.logs=[];await pending(unconfirmed.wait());
+ const unconfirmed=nftFixture({core:{tip:'0x64'}});unconfirmed.receipt.status='0x0';unconfirmed.receipt.logs=[];await assert.rejects(unconfirmed.wait(),error=>error.code==='reverted'&&error.stage==='reverted');
 });
 await check('未出回执、未够12块及超时均保留hash/account，不读取未确认的piece',async()=>{
  for(const options of [{receipt:null},{core:{tip:'0x6f'}}]){
@@ -144,11 +144,11 @@ await check('未出回执、未够12块及超时均保留hash/account，不读�
  }
  const fixture=nftFixture();await pending(fixture.wait({attempts:0}));
 });
-await check('广播后的RPC故障与onState异常均返回原交易引用，重查不重复send',async()=>{
+await check('广播后RPC故障保存引用，onState异常不影响成功，重查不重复send',async()=>{
  let offline=true;const fixture=nftFixture({readOverride(method){if(method==='eth_getTransactionReceipt'&&offline)throw Error('RPC offline');}});
  const error=await pending(fixture.mint());assert.equal(error.hash,NFT_TEST_HASH);assert.equal(sent(fixture).length,1);offline=false;
  const actual=await fixture.mint();assert.equal(actual.nft.transactionHash,NFT_TEST_HASH);assert.equal(sent(fixture).length,1);
- const callback=nftFixture();await pending(callback.mint({onState(state){if(state==='pending')throw Error('UI failed');}}));assert.equal(sent(callback).length,1);await callback.mint();assert.equal(sent(callback).length,1);
+ const callback=nftFixture();const result=await callback.mint({onState(state){if(state==='pending')throw Error('UI failed');}});assert.equal(result.nft.tokenId,'7');assert.equal(sent(callback).length,1);
 });
 await check('存储设计/来源与冻结预览不符时保留交易，不诱导再铸造',async()=>{
  for(const change of [record=>{record.profile[32]=.24;},record=>{record.kiln.dataHash='0x'+'55'.repeat(32);},record=>{record.kiln.work='419';}]){
@@ -169,5 +169,133 @@ await check('读取NFT的零owner、脏address字和区块重组均不展示作�
   const fixture=nftFixture({ownerData});await assert.rejects(readNftPiece(7,{request:fixture.request,config:fixture.config}));
  }
  let count=0;const fixture=nftFixture({readOverride(method,params){if(method==='eth_getBlockByNumber'&&++count===2)return {number:params[0],hash:'0x'+'88'.repeat(32)};}});await assert.rejects(readNftPiece(7,{request:fixture.request,config:fixture.config}),/block changed/);
+});
+await check('已上链立即显示included，0/3/11/12后继块推进后才verifying和verified',async()=>{
+ const tips=[100n,103n,111n,112n],events=[];let index=0;
+ const fixture=nftFixture({readOverride(method){if(method==='eth_blockNumber')return '0x'+tips[index++].toString(16);}});
+ const result=await fixture.wait({attempts:4,onProgress:(state,detail)=>events.push({state,...detail})});assert.equal(result.nft.tokenId,'7');
+ const counts=events.filter(event=>event.state==='included').map(event=>event.confirmedBlocks);assert.deepEqual([...new Set(counts)],[0,3,11,12]);
+ const verifyIndex=events.findIndex(event=>event.state==='verifying'),twelveIndex=events.findIndex(event=>event.state==='included'&&event.confirmedBlocks===12);assert.ok(verifyIndex>twelveIndex);
+ assert.equal(events.at(-1).state,'verified');assert.equal(events.filter(event=>event.state==='verified').length,1);
+ for(const event of events){assert.equal(event.transactionHash,NFT_TEST_HASH);assert.equal(event.account,NFT_TEST_ACCOUNT);assert.equal(event.contract,fixture.config.address);assert.equal(event.requiredDepth,12);assert.ok(event.confirmedBlocks<=12);}
+});
+await check('短暂RPC异常有限重试后继续同一交易成功，不重复广播',async()=>{
+ let failures=0;const delays=[],events=[],fixture=nftFixture({readOverride(method){if(method==='eth_getTransactionReceipt'&&failures++===0)throw Error('temporary RPC outage');}});
+ const result=await fixture.mint({waitOptions:{attempts:3,delay:async ms=>delays.push(ms)},onProgress:(state,detail)=>events.push({state,...detail})});
+ assert.equal(result.nft.tokenId,'7');assert.equal(sent(fixture).length,1);assert.deepEqual(delays,[1500]);assert.equal(events.filter(event=>event.state==='retrying').length,1);assert.equal(events.at(-1).state,'verified');
+ assert.ok(fixture.reads.filter(read=>read.method==='eth_getTransactionReceipt').every(read=>read.params[0]===NFT_TEST_HASH));
+});
+await check('已包含或校验中断网时保留阶段，恢复后完成，不把断网当成verify失败',async()=>{
+ for(const stage of ['included','verifying']){
+  let failed=false;const events=[],fixture=nftFixture({readOverride(method,params){const target=stage==='included'?method==='eth_blockNumber':method==='eth_call'&&params[0].data.startsWith(KILN_SELECTORS.piece);if(target&&!failed){failed=true;throw Error('transient archive outage');}}});
+  await fixture.wait({attempts:3,onProgress:(state,detail)=>events.push({state,...detail})});
+  const retry=events.find(event=>event.state==='retrying');assert.equal(retry.stage,stage);assert.equal(retry.tokenId,'7');assert.equal(retry.blockNumber,'0x64');assert.equal(events.some(event=>event.state==='verification_failed'),false);assert.equal(events.at(-1).state,'verified');
+ }
+});
+await check('连续RPC失败有明确次数和退避上限，最终pending仍保存已观察到的token',async()=>{
+ const delays=[],events=[];let receiptReads=0;
+ const fixture=nftFixture({readOverride(method){if(method==='eth_blockNumber')throw Error('tip unavailable');if(method==='eth_getTransactionReceipt')receiptReads++;}});
+ const error=await pending(fixture.wait({attempts:10,maxRpcRetries:2,retryDelayMs:5,delay:async ms=>delays.push(ms),onProgress:(state,detail)=>events.push({state,...detail})}));
+ assert.equal(receiptReads,3);assert.deepEqual(delays,[5,10]);assert.equal(error.reason,'network_retry_exhausted');assert.equal(error.stage,'included');assert.equal(error.lastObservedStage,'included');assert.equal(error.tokenId,'7');assert.equal(error.confirmedBlocks,0);
+ assert.deepEqual(events.filter(event=>event.state==='retrying').map(event=>event.retryCount),[1,2]);assert.equal(error.retryCount,2);assert.equal(error.maxRetries,2);assert.equal(events.some(event=>event.state==='verified'),false);
+});
+await check('无效日志不报告included，设计不符报告verification_failed且保持禁止再广播',async()=>{
+ const invalid=nftFixture(),badEvents=[];invalid.receipt.logs[0].removed=true;
+ const bad=await pending(invalid.wait({attempts:5,onProgress:(state,detail)=>badEvents.push({state,...detail})}));assert.equal(bad.reason,'verification_failed');assert.equal(badEvents.some(event=>event.state==='included'),false);assert.equal(badEvents.some(event=>event.state==='retrying'),false);
+ const fixture=nftFixture(),changed=testRecord(),events=[];changed.profile[20]=.24;fixture.options.pieceData=pieceFixture(changed);
+ const error=await pending(fixture.mint({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'verification_failed');assert.equal(error.stage,'verifying');assert.equal(error.confirmedBlocks,12);assert.equal(events.at(-1).state,'verification_failed');assert.equal(events.some(event=>event.state==='verified'),false);
+ await pending(fixture.mint());assert.equal(sent(fixture).length,1);fixture.options.pieceData=fixture.pieceData;await fixture.mint();assert.equal(sent(fixture).length,1);
+});
+await check('同步throw、异步reject或修改progress对象均不能改写成功或制造unhandled rejection',async()=>{
+ const unhandled=[],handler=error=>unhandled.push(error);process.on('unhandledRejection',handler);
+ try{
+  const fixture=nftFixture(),states=[];
+  const result=await fixture.mint({onState:async()=>{throw Error('async UI failure');},onProgress(state,detail){states.push(state);assert.ok(Object.isFrozen(detail));if(state==='included')return Promise.reject(Error('async progress failure'));if(state==='verified')detail.transactionHash='0x'+'99'.repeat(32);throw Error('sync progress failure');}});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(result.nft.transactionHash,NFT_TEST_HASH);assert.equal(result.nft.tokenId,'7');assert.ok(states.includes('included'));assert.equal(states.at(-1),'verified');assert.deepEqual(unhandled,[]);assert.equal(sent(fixture).length,1);
+ }finally{process.removeListener('unhandledRejection',handler);}
+});
+await check('abort已包含交易时保存进度，暂停恢复查询不会重新发交易',async()=>{
+ const controller=new AbortController(),events=[],fixture=nftFixture({core:{tip:'0x67'}});
+ const error=await pending(fixture.mint({signal:controller.signal,waitOptions:{attempts:3,delay:async()=>controller.abort()},onProgress:(state,detail)=>events.push({state,...detail})}));
+ assert.equal(error.reason,'aborted');assert.equal(error.stage,'included');assert.equal(error.tokenId,'7');assert.equal(error.confirmedBlocks,3);assert.equal(events.at(-1).state,'aborted');assert.equal(sent(fixture).length,1);
+ fixture.options.core.tip='0x70';const resumed=await fixture.mint();assert.equal(resumed.nft.tokenId,'7');assert.equal(sent(fixture).length,1);
+});
+await check('abort终止无响应RPC，晚到响应不能触发verified或遗失交易引用',async()=>{
+ const fixture=nftFixture(),controller=new AbortController(),events=[];let lateResolve,childAborted=false;
+ const request=(method,params,options)=>{
+  if(method==='eth_getTransactionReceipt')return new Promise(resolve=>{lateResolve=resolve;options.signal.addEventListener('abort',()=>{childAborted=true;});queueMicrotask(()=>controller.abort());});
+  return fixture.request(method,params);
+ };
+ const error=await pending(fixture.wait({request,signal:controller.signal,requestTimeoutMs:100,onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'aborted');assert.equal(childAborted,true);
+ lateResolve(fixture.receipt);await new Promise(resolve=>setImmediate(resolve));assert.equal(events.some(event=>event.state==='verified'),false);assert.equal(events.at(-1).state,'aborted');
+ const initial=new AbortController();initial.abort();const before=fixture.reads.length;await pending(fixture.wait({signal:initial.signal}));assert.equal(fixture.reads.length,before);
+});
+await check('单次RPC有独立超时，即使request不响应也不会永久busy',async()=>{
+ const fixture=nftFixture();let childAborted=false;
+ const request=(method,params,options)=>method==='eth_getTransactionReceipt'?new Promise(()=>options.signal.addEventListener('abort',()=>{childAborted=true;})):fixture.request(method,params);
+ const error=await pending(fixture.wait({request,requestTimeoutMs:5,maxRpcRetries:0}));assert.equal(error.reason,'network_retry_exhausted');assert.equal(error.stage,'submitted');assert.equal(childAborted,true);
+});
+await check('广播后立即导航abort仍保留hash，观察器不改变早期revert结果',async()=>{
+ const controller=new AbortController(),fixture=nftFixture();const error=await pending(fixture.mint({signal:controller.signal,onState(state){if(state==='pending')controller.abort();}}));assert.equal(error.reason,'aborted');assert.equal(sent(fixture).length,1);await fixture.mint();assert.equal(sent(fixture).length,1);
+ const reverted=nftFixture({core:{tip:'0x64'}}),states=[];reverted.receipt.status='0x0';reverted.receipt.logs=[];
+ await assert.rejects(reverted.wait({onProgress(state){states.push(state);throw Error('observer error');}}),error=>error.code==='reverted'&&error.stage==='reverted'&&error.pending===false);assert.equal(states.at(-1),'reverted');assert.equal(reverted.reads.some(read=>read.method==='eth_blockNumber'),false);
+});
+await check('12块后仍需最终规范区块和作品校验，重组不能宣告verified',async()=>{
+ let headers=0;const events=[],fixture=nftFixture({readOverride(method,params){if(method==='eth_getBlockByNumber'&&++headers===2)return {number:params[0],hash:'0x'+'99'.repeat(32)};}});
+ const error=await pending(fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'verification_failed');assert.equal(error.stage,'verifying');assert.equal(error.confirmedBlocks,12);assert.ok(events.some(event=>event.state==='included'));assert.equal(events.some(event=>event.state==='verified'),false);
+ const deep=nftFixture({core:{tip:'0x1000'}}),deepEvents=[];await deep.wait({onProgress:(state,detail)=>deepEvents.push({state,...detail})});assert.equal(deepEvents.at(-1).confirmedBlocks,12);assert.equal(deepEvents.at(-1).state,'verified');
+});
+await check('已包含回执消失时清空当前阶段，网络重试不能复活旧token和确认数',async()=>{
+ let receipts=0,tips=0;const events=[],fixture=nftFixture({readOverride(method){
+  if(method==='eth_getTransactionReceipt'){receipts++;if(receipts===2)return null;if(receipts===3)throw Error('RPC unavailable after receipt disappeared');}
+  if(method==='eth_blockNumber')return ['0x67','0x6f','0x70'][tips++];
+ }});
+ const result=await fixture.wait({attempts:5,onProgress:(state,detail)=>events.push({state,...detail})});assert.equal(result.nft.tokenId,'7');
+ const disappearedIndex=events.findIndex(event=>event.reason==='receipt_unavailable'),retryIndex=events.findIndex(event=>event.state==='retrying');assert.ok(disappearedIndex>0&&retryIndex>disappearedIndex);
+ for(const event of [events[disappearedIndex],events[retryIndex]]){assert.equal(event.stage,'submitted');assert.equal(event.tokenId,null);assert.equal(event.confirmedBlocks,0);assert.equal(event.blockNumber,null);assert.equal(event.blockHash,null);assert.equal(event.lastObservedStage,'included');}
+ assert.equal(events.slice(0,retryIndex+1).some(event=>event.state==='verified'),false);
+ const elevenIndex=events.findIndex((event,index)=>index>retryIndex&&event.state==='included'&&event.confirmedBlocks===11),verifiedIndex=events.findIndex(event=>event.state==='verified');assert.ok(elevenIndex>retryIndex&&verifiedIndex>elevenIndex);assert.equal(events[verifiedIndex].confirmedBlocks,12);
+});
+await check('回执消失后达到轮询上限，恢复引用只保留历史stage而不声称当前已包含',async()=>{
+ let reads=0;const fixture=nftFixture({core:{tip:'0x67'},readOverride(method){if(method==='eth_getTransactionReceipt'&&++reads>1)return null;}});
+ const error=await pending(fixture.wait({attempts:2}));assert.equal(error.reason,'confirmation_timeout');assert.equal(error.stage,'submitted');assert.equal(error.lastObservedStage,'included');assert.equal(error.tokenId,null);assert.equal(error.confirmedBlocks,0);assert.equal(error.blockNumber,null);assert.equal(error.blockHash,null);
+});
+await check('旧receipt state不可用时，以同一次tip-12的固定snapshot校验并成功',async()=>{
+ const fixture=nftFixture({core:{tip:'0xc8'},ownerData:chainAbi(BigInt(NFT_TEST_OTHER)),readOverride(method,params){
+  if(['eth_getCode','eth_call'].includes(method)&&params[1]==='0x64')throw Object.assign(Error('historical state is not available'),{code:-32000});
+ }}),events=[];
+ const result=await fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})});assert.equal(result.nft.tokenId,'7');assert.equal(result.nft.owner,NFT_TEST_OTHER);assert.equal(result.maker,NFT_TEST_ACCOUNT);
+ assert.equal(result.nft.blockNumber,'0x64');assert.equal(result.nft.stateBlockNumber,'0xbc');assert.equal(result.nft.stateBlockHash,CHAIN_BLOCK_HASH);
+ assert.equal(fixture.reads.filter(read=>read.method==='eth_blockNumber').length,1);
+ const stateReads=fixture.reads.filter(read=>['eth_getCode','eth_call'].includes(read.method));assert.equal(stateReads.length,4);for(const read of stateReads)assert.equal(read.params[1],'0xbc');
+ const headers=fixture.reads.filter(read=>read.method==='eth_getBlockByNumber').map(read=>read.params[0]);assert.deepEqual(headers,['0x64','0xbc','0xbc','0x64']);assert.equal(events.at(-1).state,'verified');
+});
+await check('近期snapshot发生重组或原receipt最后变更，均不能verified',async()=>{
+ for(const target of ['snapshot','receipt']){
+  const counts=new Map(),events=[],fixture=nftFixture({core:{tip:'0xc8'},readOverride(method,params){
+   if(method==='eth_getBlockByNumber'){
+    const block=params[0],count=(counts.get(block)??0)+1;counts.set(block,count);
+    if(count===2&&block===(target==='snapshot'?'0xbc':'0x64'))return {number:block,hash:'0x'+'99'.repeat(32)};
+   }
+  }});
+  const error=await pending(fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'verification_failed');assert.equal(error.stage,'verifying');assert.equal(events.some(event=>event.state==='verified'),false);
+  assert.match(error.cause.message,target==='snapshot'?/snapshot changed/:/Receipt block changed/);
+ }
+});
+await check('snapshot header必须对应tip-12，缺失或早于receipt不能读取作品',async()=>{
+ for(const replacement of [null,{number:'0x63',hash:CHAIN_BLOCK_HASH},{number:'0xbc',hash:'0x'+'00'.repeat(32)}]){
+  const fixture=nftFixture({core:{tip:'0xc8'},readOverride(method,params){if(method==='eth_getBlockByNumber'&&params[0]==='0xbc')return replacement;}});
+  const error=await pending(fixture.wait());assert.equal(error.reason,'verification_failed');assert.equal(fixture.reads.some(read=>['eth_getCode','eth_call'].includes(read.method)),false);
+ }
+ for(const tip of ['0x60','0x64','0x6f']){
+  const fixture=nftFixture({core:{tip}});await pending(fixture.wait());assert.equal(fixture.reads.some(read=>['eth_getCode','eth_call'].includes(read.method)),false);
+ }
+});
+await check('近期snapshot仍严格检查runtime和冻结设计，不能借切换读取区块绕过',async()=>{
+ const changed=testRecord();changed.profile[40]=.24;
+ for(const options of [{code:'0x6000'},{pieceData:pieceFixture(changed)},{binding:chainAbi(BigInt(NFT_TEST_OTHER))}]){
+  const fixture=nftFixture({...options,core:{tip:'0xc8'}}),events=[];
+  const error=await pending(fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'verification_failed');assert.equal(events.some(event=>event.state==='verified'),false);
+ }
 });
 console.log(`RESULT ${total}/${total}`);
