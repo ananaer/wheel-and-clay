@@ -9,4 +9,4 @@
 
 音乐来自项目原创 Wood & Light，另配原创细绳、落脚和轻点击音效。品牌素材来源见[BRAND-ASSETS.md](../BRAND-ASSETS.md)。视频不代表 Squeekchain 官方出品、背书或审批通过。
 
-[公开试玩](https://wheel-and-clay.duckdns.org/)
+[公开试玩](https://wheel-and-clay.shop/)
