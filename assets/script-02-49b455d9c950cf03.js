@@ -2270,6 +2270,7 @@ async function publicKilnRead(method,params=[],{signal,fetcher=globalThis.fetch,
  try{
   const response=await fetcher(KILN_NETWORK.rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id,method,params}),signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer'});
   if(!response.ok)throw Error('Chain service unavailable');const result=await response.json();
+  if(result&&!Array.isArray(result)&&result.jsonrpc==='2.0'&&result.id===id&&result.error)throw Object.assign(Error('Chain read failed'),{data:result.error.data,rpcMessage:result.error.message});
   if(!result||Array.isArray(result)||result.jsonrpc!=='2.0'||result.id!==id||Object.hasOwn(result,'error')||!Object.hasOwn(result,'result'))throw Error('Chain read failed');
   return result.result;
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
@@ -2561,14 +2562,31 @@ async function waitForNftMint(hash,account,record,{request=publicKilnRead,config
 
 // 已广播记录在页面内保留；UI 使用 onState / pending error 持久保存相同引用以跨刷新重查。
 const nftPendingMints=new Map(),nftMintFlights=new Map();
+// 合约自定义错误选择器。发送前模拟失败时把真实原因交给 UI，不再笼统归为网络或测试币。
+const NFT_REVERT_CODES=Object.freeze({'0xad7e29d0':'already_fired','0x7f629f71':'source_mismatch','0x364ad026':'source_mismatch'});
+// 各钱包把 revert 数据放在不同层级（data、data.data、error.data、cause…），统一展开后再查。
+function nftErrorText(error){
+ const parts=[],walk=(value,depth)=>{if(depth>4||value===null||value===undefined)return;if(typeof value==='string'){parts.push(value);return;}if(typeof value==='object')for(const key of ['data','error','cause','originalError','info','message','rpcMessage'])walk(value[key],depth+1);};
+ walk(error,0);return parts.join(' ');
+}
+function nftRevertCode(error){const text=nftErrorText(error).toLowerCase();for(const [selector,code]of Object.entries(NFT_REVERT_CODES))if(text.includes(selector))return code;return null;}
+const nftLowFunds=error=>/insufficient funds/i.test(nftErrorText(error));
+async function nftPreflightError(cause,transaction,request){
+ if(Number(cause?.code)===4001)return cause;
+ let code=nftRevertCode(cause);
+ // 钱包可能吞掉 revert 数据，用公共节点按同样参数只读重放一次来取得真实原因。
+ if(!code&&!nftLowFunds(cause)){try{await request('eth_call',[{from:transaction.from,to:transaction.to,data:transaction.data,value:'0x0'},'latest']);}catch(readError){code=nftRevertCode(readError);}}
+ if(!code&&nftLowFunds(cause))code='insufficient_funds';
+ return code?Object.assign(Error('Mint preflight failed: '+code),{code,cause}):cause;
+}
 // 仅由明确的“Mint”点击调用。无需登录签名、授权、代币转移或私钥。
 async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CONFIG,onState=()=>{},onProgress=()=>{},signal,request=publicKilnRead,waitOptions={}}={}){
  if(!provider?.request)throw Object.assign(Error('Open in a browser with an Ethereum wallet'),{code:'no_wallet'});
  if(!nftAvailable(config))throw Object.assign(Error('Mint is not deployed'),{code:'not_deployed'});
  const preview=nftFrozenPreview(record),data=encodeMintCall(preview),state=(name,detail)=>nftNotify(onState,name,detail);
  const checkAbort=()=>{if(signal?.aborted)throw new DOMException('Aborted','AbortError');};checkAbort();state('connecting');
- if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId)){checkAbort();state('switching');await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]});}
- if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Error('Use Sepolia testnet');
+ if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId)){checkAbort();state('switching');try{await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]});}catch(cause){if(Number(cause?.code)===4001)throw cause;throw Object.assign(Error('Use Sepolia testnet'),{code:'wrong_network',cause});}}
+ if(kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Object.assign(Error('Use Sepolia testnet'),{code:'wrong_network'});
  checkAbort();const accounts=await provider.request({method:'eth_requestAccounts'}),account=kilnAddress(accounts?.[0]);if(!account)throw Error('No wallet account');
  const address=kilnAddress(config.address),key=address+':'+account+':'+data;
  if(nftMintFlights.has(key))return nftMintFlights.get(key);
@@ -2576,15 +2594,18 @@ async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CONFIG,on
   let reference=nftPendingMints.get(key);
   try{
    if(!reference){
-    checkAbort();state('checking');await verifyNftDeployment(request,config);
-    const source=await loadKilnRounds({round:preview.kiln.round,count:1,request});
+    checkAbort();state('checking');let source;
+    try{await verifyNftDeployment(request,config);source=await loadKilnRounds({round:preview.kiln.round,count:1,request});}
+    catch(cause){throw Object.assign(cause,{code:cause?.code??'chain_unavailable'});}
     if(!nftSameKiln(source.records[0],preview.kiln))throw Object.assign(Error('The preview does not match the certified round. Re-fire before minting.'),{code:'source_mismatch'});
     checkAbort();
     const transaction={from:account,to:address,data,value:'0x0',chainId:KILN_NETWORK.hexChainId};
-    await provider.request({method:'eth_call',params:[transaction,'latest']});
-    const gas=kilnQuantity(await provider.request({method:'eth_estimateGas',params:[transaction]}));if(gas===0n||gas>3000000n)throw Error('Unexpected gas estimate');transaction.gas='0x'+(gas*12n/10n).toString(16);
+    let estimate;
+    try{await provider.request({method:'eth_call',params:[transaction,'latest']});estimate=await provider.request({method:'eth_estimateGas',params:[transaction]});}
+    catch(cause){throw await nftPreflightError(cause,transaction,request);}
+    const gas=kilnQuantity(estimate);if(gas===0n||gas>3000000n)throw Error('Unexpected gas estimate');transaction.gas='0x'+(gas*12n/10n).toString(16);
     const current=await provider.request({method:'eth_accounts'});if(kilnAddress(current?.[0])!==account||kilnQuantity(await provider.request({method:'eth_chainId'}))!==BigInt(KILN_NETWORK.chainId))throw Error('Wallet changed. Try again.');
-    checkAbort();state('confirming');const hash=await provider.request({method:'eth_sendTransaction',params:[transaction]});
+    checkAbort();state('confirming');const hash=await provider.request({method:'eth_sendTransaction',params:[transaction]}).catch(cause=>{throw nftLowFunds(cause)&&Number(cause?.code)!==4001?Object.assign(Error('Mint preflight failed: insufficient_funds'),{code:'insufficient_funds',cause}):cause;});
     if(!nftTxUrl(hash))throw Object.assign(Error('Wallet returned no valid reference. Check wallet activity before trying again.'),{code:'submission_unknown',account,contract:address,pending:true});
     reference=nftMintReference(hash,account,config);nftPendingMints.set(key,reference);
    }
@@ -2627,7 +2648,13 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
   unavailable:['NFT 正在准备，先收藏这一件。','NFT minting is being prepared. You can keep this piece now.'],
   noWallet:['请在装有以太坊钱包的浏览器里打开本页，再点击铸造。','Open this page in a browser with an Ethereum wallet, then choose Mint.'],
   rejected:['你取消了钱包请求，作品还在这里。','Wallet request cancelled. Your piece is still here.'],
-  mintError:['交易未完成。确认钱包在 Sepolia、有测试币后再试。','The mint did not complete. Check Sepolia and your test ETH, then retry.'],
+  mintError:['铸造没有完成，请打开钱包检查后重试。','The mint did not complete. Check your wallet, then retry.'],
+  mintAlready:['这件作品已用当前钱包在这一轮铸造过，同一设计同一轮只能铸一次。换一轮窑火或改改造型，就能再铸一件。','This wallet already minted this exact piece from this round. Choose another kiln round or change the shape to mint a new one.'],
+  mintFunds:['钱包里的 Sepolia 测试币不够付 gas，领一些后再试。','Not enough Sepolia test ETH for gas. Top up, then retry.'],
+  mintNetwork:['钱包没有切到 Sepolia，请在钱包里手动选择后再试。','Your wallet is not on Sepolia. Select it in your wallet, then retry.'],
+  mintChain:['暂时没能核对链上合约和窑火数据，稍后再试。','Could not check the contract and kiln data onchain. Try again shortly.'],
+  mintWallet:['钱包还没有回应，请打开钱包处理后再试。','Your wallet has not responded. Open it, then retry.'],
+  mintReverted:['交易已上链但执行失败，作品还在这里，可以重新铸造。','The transaction was included but failed. Your piece is still here, and you can retry.'],
   connecting:['连接钱包…','Connecting your wallet…'],switching:['请切换到 Sepolia','Switch to Sepolia'],checking:['核对合约与作品…','Checking the contract and piece…'],confirming:['请在钱包确认铸造','Confirm the mint in your wallet'],pending:['交易已提交','Transaction submitted'],
   pendingHelp:['交易已提交。请核对这笔交易，勿重复铸造。','Your transaction was sent. Check this transaction before trying another mint.'],unknownHelp:['钱包未返回有效交易编号。请先查钱包活动，勿重复铸造；若已提交，可粘贴交易哈希核验。','The wallet returned no transaction reference. Check wallet activity before minting again; paste its transaction hash if it was sent.'],hashLabel:['钱包中的交易哈希','Transaction hash from your wallet'],recheck:['检查交易状态','Check transaction'],transaction:['查看交易 ↗','View transaction ↗'],openNft:['打开这件 NFT ↗','Open your NFT ↗'],
   mintSent:['交易已提交','Transaction submitted'],mintIncluded:['铸造完成','Mint complete'],mintVerifying:['正在校验作品','Checking your piece'],mintRestoring:['正在找回这笔铸造','Finding your mint'],mintRetrying:['连接暂时中断，正在重试','Connection interrupted. Reconnecting…'],mintPaused:['连接尚未恢复，可重新检查这笔交易。','Still unable to reconnect. Recheck this transaction.'],mintCheckFailed:['交易记录需要进一步核对。请查看交易或重新检查，无需再铸造。','This transaction needs another check. Inspect it or recheck; do not mint again.'],mintIncludedHelp:['交易已成功。作品核验在后台继续，你可以继续创作。','Your mint succeeded. Artwork verification continues in the background. You can keep creating.'],mintVerifyHelp:['核对器形、釉色和回合来源。','Matching the shape, glaze and round provenance.'],mintSentHelp:['交易正在等待打包。你可以继续创作，进度会保留在这里。','Your transaction is awaiting inclusion. Keep creating; its progress is saved here.'],mintConfirmations:['后续区块','FOLLOWING BLOCKS'],mintSteps:['发送 · 上链 · 校验','SENT · ONCHAIN · VERIFIED'],mintSuccessTitle:['这一件，\n已上链。','Your piece.\nOnchain.'],mintSuccessLead:['你的手艺与它的火候，已经一起封存。','Your hands. His fire. Sealed together.'],mintSuccessLabel:['铸造完成','MINT COMPLETE'],mintSuccessHelp:['器形、釉色与轮次来源已保存至合约。','Shape, glaze and round provenance saved in the contract.'],mintShare:['分享这件作品','Share your piece'],mintStamp:['链上封存','SEALED ONCHAIN'],mintChecking:['核验中','CHECKING'],
@@ -2642,7 +2669,9 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
  const t=key=>text[key][lang()==='zh'?0:1],q=s=>root.querySelector(s),all=s=>root.querySelectorAll(s),put=(s,value)=>{const el=q(s);if(el&&el.textContent!==String(value))el.textContent=String(value);};
  let base=null,records=[],proof=null,selected=null,state='empty',view=null,visible=false,sceneReady=false,gen=0,raf=0,elapsed=0,lastFrame=0,compare=false,error='',mintState='',mintInfo=null,minted=null,busy=false,disposed=false;
  let mintProgress=null,mintPhase='',mintController=null,resumeTimer=0,resumeAttempts=0,celebrationTimer=0,celebrationPending=null;
- let sourceVerified=false,tracking=false,mintAttached=false,mintErrorKey='',completedJob=null,jobSerial=0;const celebrated=new Set();
+ let sourceVerified=false,tracking=false,mintAttached=false,mintErrorKey='',completedJob=null,jobSerial=0,errorDetail='';const celebrated=new Set();
+ const mintFailureKeys={source_mismatch:'mismatch',4001:'rejected',no_wallet:'noWallet',already_fired:'mintAlready',insufficient_funds:'mintFunds',wrong_network:'mintNetwork',chain_unavailable:'mintChain',wallet_timeout:'mintWallet','-32002':'mintWallet'};
+ const mintFailureKey=err=>Object.hasOwn(mintFailureKeys,String(err?.code))?mintFailureKeys[String(err.code)]:'mintError';
  const pendingKey='wheel-clay-pending-mint-v1';
  const readPending=()=>{try{const p=JSON.parse(localStorage.getItem(pendingKey));return p&&(nftTxUrl(p.hash)||p.unknown===true)&&/^0x[0-9a-f]{40}$/i.test(p.account)&&cleanPieceRecord(p.record)?.kiln?p:null;}catch{return null;}};
  const persistPending=()=>{try{if(mintInfo)localStorage.setItem(pendingKey,JSON.stringify(mintInfo));else localStorage.removeItem(pendingKey);}catch{/* 链接仍保留在当前页面，不隐藏已提交交易。 */}};
@@ -2706,7 +2735,7 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
   q('.kiln-background-pending').hidden=mintAttached||!mintInfo&&!completedJob||!!minted;q('.kiln-background-pending').disabled=busy||state==='firing';put('.kiln-background-pending',t(mintInfo?'background':'backgroundReady'));
   q('.kiln-nft-link').hidden=!minted;if(minted){q('.kiln-nft-link').href=nftPieceUrl(minted.nft.tokenId,lang());put('#kiln-title',t('mintSuccessTitle'));put('.kiln-intro',t('mintSuccessLead'));put('.kiln-keep',t('mintShare'));}
   q('.kiln-hash-entry').hidden=!(mintAttached&&(mintInfo?.unknown||mintInfo?.manual));q('.kiln-tx').hidden=!mintInfo?.hash;q('.kiln-pending-actions').hidden=!mintInfo||!mintAttached;q('.kiln-recheck').disabled=busy||tracking;if(mintInfo)q('.kiln-tx').href=nftTxUrl(mintInfo.hash);
-  put('.kiln-feedback',mintState==='saving'?t('saving'):mintAttached&&mintInfo&&!mintInfo.unknown?'':mintState?t(mintState):error?t(error):mintAttached&&mintInfo?t('unknownHelp'):'');
+  put('.kiln-feedback',mintState==='saving'?t('saving'):mintAttached&&mintInfo&&!mintInfo.unknown?'':mintState?t(mintState):error?t(error)+(error==='mintError'&&errorDetail?' ('+errorDetail+')':''):mintAttached&&mintInfo?t('unknownHelp'):'');
   q('.kiln-plain').hidden=state==='fired'||state==='firing'||mintAttached&&!!mintInfo;q('.kiln-plain').disabled=busy||!base||!sceneReady;
   renderMintStatus();
  }
@@ -2749,7 +2778,7 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
   clearTimeout(celebrationTimer);celebrationTimer=setTimeout(()=>root.classList.remove('kiln-mint-celebrate'),2600);
  }
  function confirmationError(err){
-  if(err?.code==='reverted'){const attached=mintAttached;mintInfo=null;mintProgress=null;mintPhase='';mintAttached=false;persistPending();clearCelebration();if(attached&&state==='fired')error='mintError';}
+  if(err?.code==='reverted'){const attached=mintAttached;mintInfo=null;mintProgress=null;mintPhase='';mintAttached=false;persistPending();clearCelebration();if(attached&&state==='fired'){error='mintReverted';errorDetail='';}}
   else if(mintInfo){mintErrorKey=err?.reason==='verification_failed'||err?.reason==='invalid_saved_preview'?'mintCheckFailed':'mintPaused';if(mintErrorKey==='mintCheckFailed'){mintProgress={...mintProgress,receiptVerified:false};mintPhase='checking';clearCelebration();}}
  }
  async function mint(){
@@ -2765,7 +2794,7 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
   }catch(err){
    if(disposed||serial!==jobSerial)return;
    if(err?.code==='submission_unknown'){mintInfo={unknown:true,account:err.account,record};mintAttached=true;persistPending();error='unknownHelp';}
-   else if(mintInfo)confirmationError(err);else error=err?.code==='source_mismatch'?'mismatch':err?.code===4001?'rejected':err?.code==='no_wallet'?'noWallet':'mintError';
+   else if(mintInfo)confirmationError(err);else{error=mintFailureKey(err);errorDetail=error==='mintError'?String(err?.shortMessage||err?.message||'').replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,140):'';console.error('[mint] failed before submission',err);}
   }finally{notifyWallet();if(serial===jobSerial){if(!released){busy=false;mintState='';}tracking=false;mintController=null;if(!disposed){render();scheduleResume(15000);}}}
  }
  async function recheck(automatic=false){
