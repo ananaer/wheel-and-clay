@@ -13,6 +13,51 @@
    const target=['running','idle'].includes(signal.state)?potteryDrive(signal.rpm):null;
    return target===null?{...signal,state:'unknown',rpm:null,potteryRpm:null}:{...signal,potteryRpm:target};
  }
+ // LIVE 抗抖只管理游戏动力，不覆盖传感器状态。计时由调用方注入，SIM 不调用。
+ function createLivePowerBuffer({holdMs=90000}={}){
+   if(typeof holdMs!=='number'||!Number.isFinite(holdMs)||holdMs<=0)throw new RangeError('holdMs must be a positive finite duration');
+   let heldRpm=null,lastPositiveObservedAt=null,latestKnownObservedAt=null,lastPositiveAt=null,badSince=null,lastNow=null;
+   const stamp=value=>{
+     if(typeof value==='number')return Number.isFinite(value)&&value>=0?value:null;
+     if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(value))return null;
+     const parsed=Date.parse(value);return Number.isFinite(parsed)&&parsed>=0?parsed:null;
+   };
+   function reset(){heldRpm=null;lastPositiveObservedAt=null;latestKnownObservedAt=null;lastPositiveAt=null;badSince=null;lastNow=null;}
+   function update(normalizedSignal,nowMs){
+     if(typeof nowMs!=='number'||!Number.isFinite(nowMs)||nowMs<0)throw new RangeError('nowMs must be a finite non-negative timestamp');
+     const source=normalizedSignal&&typeof normalizedSignal==='object'?normalizedSignal:{};
+     // 系统时间回拨不得增加正在进行的缓冲剩余时间。
+     const now=lastNow===null?nowMs:Math.max(lastNow,nowMs);lastNow=now;
+     const sourceState=source.state??'unknown',sourceRpm=source.rpm??null,observed=stamp(source.observedAt);
+     const validRpm=typeof sourceRpm==='number'&&Number.isFinite(sourceRpm)&&sourceRpm>=0;
+     const positive=sourceState==='running'&&validRpm&&sourceRpm>0&&observed!==null;
+     const zero=(sourceState==='idle'||sourceState==='running')&&validRpm&&sourceRpm===0;
+     const newer=positive&&(latestKnownObservedAt===null||observed>latestKnownObservedAt);
+     // 已见到更新的有效零样本后，较旧的正样本也不能恢复；未知时间戳不可信，不抬高水位。
+     if((positive||zero)&&observed!==null&&(latestKnownObservedAt===null||observed>latestKnownObservedAt))latestKnownObservedAt=observed;
+     let powerState,powerRpm,buffering=false,bufferRemainingMs=0;
+     if(newer){
+       heldRpm=sourceRpm;lastPositiveObservedAt=observed;lastPositiveAt=now;badSince=null;
+       powerState='running';powerRpm=heldRpm;
+     }else if(positive&&observed===lastPositiveObservedAt&&badSince===null){
+       // 同一新鲜样本在正常段可使用，但不更改上次接受值或续期时间。
+       powerState='running';powerRpm=heldRpm;
+     }else{
+       if(heldRpm!==null){
+         // 第一次零速/未知启动固定 episode；坏状态互换与旧正样本都不重启。
+         if(badSince===null)badSince=now;
+         bufferRemainingMs=Math.max(0,holdMs-(now-badSince));
+       }
+       buffering=heldRpm!==null&&bufferRemainingMs>0;
+       powerState=buffering?'running':zero?'idle':'unknown';
+       powerRpm=buffering?heldRpm:zero?0:null;
+     }
+     return Object.freeze({...source,sourceState,sourceRpm,sourceObservedAt:source.observedAt??null,sourceFreshnessAt:source.freshnessAt??null,
+       powerState,powerRpm,buffering,bufferRemainingMs,bufferStartedAt:badSince,bufferExpiresAt:badSince===null?null:badSince+holdMs,
+       lastPositiveObservedAt,latestKnownObservedAt,lastPositiveAt});
+   }
+   return Object.freeze({update,reset});
+ }
  function simulatedWheelRpm(mode='steady',time=0){
    const now=Number.isFinite(time)?time:0;
    return mode==='steady'?60+Math.sin(now/2100)*1.8:mode==='sprint'?110+Math.sin(now/1300)*6:0;
@@ -90,6 +135,6 @@
  function stepMotor(current,target,dt){return current+(Math.max(0,Math.min(90,target))-current)*(1-Math.exp(-Math.max(0,Math.min(.1,dt))/(target>current?.75:1.3)));}
  function changed(a,b){return a.some((v,i)=>Math.abs(v-b[i])>1e-5);}
  function history(initial,kind='vase'){let entries=[{values:initial.slice(),kind}],index=0;return {push(v,nextKind=entries[index].kind){if(!changed(entries[index].values,v)&&nextKind===entries[index].kind)return;entries=entries.slice(0,index+1);entries.push({values:v.slice(),kind:nextKind});if(entries.length>40)entries.shift();index=entries.length-1;},undo(){if(index>0)index--;return entries[index].values.slice();},redo(){if(index<entries.length-1)index++;return entries[index].values.slice();},get form(){return entries[index].kind;},get canUndo(){return index>0;},get canRedo(){return index<entries.length-1;}};}
- root.Pottery={COUNT,MIN,MAX,HEIGHT,clamp,potteryDrive,driveSignal,simulatedWheelRpm,profile,sculpt,touchTarget,stepTouch,orderProfile,similarity,repairCommission,repairMetrics,spendTurns,advanceRound,validProfile,stepMotor,changed,history};
+ root.Pottery={COUNT,MIN,MAX,HEIGHT,clamp,potteryDrive,driveSignal,createLivePowerBuffer,simulatedWheelRpm,profile,sculpt,touchTarget,stepTouch,orderProfile,similarity,repairCommission,repairMetrics,spendTurns,advanceRound,validProfile,stepMotor,changed,history};
  if(typeof module!=='undefined')module.exports=root.Pottery;
 })(typeof window!=='undefined'?window:globalThis);

@@ -18,7 +18,7 @@ export function createOrders(hooks){
   studyShort:['不限圈，慢慢找到手感。','No turn limit. Take your time.'],turnsShort:['用有限的转动，接近目标。','A small budget. Make every turn count.'],burstShort:['它一停稳，这件就定形。','When it stops, your shape is set.'],repairShort:['修好一处，护住其余。限 12 圈。','Fix the flaw. Protect the rest. 12 turns.'],
   studyRule:['没有圈数上限。跑轮停了就休息，满意时交付。','No turn limit. Rest when the wheel rests; deliver when you are ready.'],
   turnsRule:['20 圈陶轮转动用完自动定形。仓鼠跑得越快，可操作的时间越短；停稳后暂停消耗。','The shape sets after 20 pottery-wheel turns. A faster hamster leaves less time; a resting wheel spends no turns.'],
-  burstRule:['等它开跑。首次停跑并停稳后自动定形，也可提前交付；断线只会暂停。','Wait for a run. Its first settled stop sets your shape, or deliver early. Lost signals only pause the round.'],
+  burstRule:['等它开跑。首次停跑并停稳后自动定形，也可提前交付；实时模式有 90 秒动力缓冲；断线超时只暂停。','Wait for a run. Its first settled stop sets your shape, or deliver early. Live power has a 90-second reserve; an expired lost signal pauses the round.'],
   repairRule:['从受损陶坯开始，用 12 圈陶轮转动修复一处。轮廓达 85%、完好区保留 90% 视为修复成功；可提前交付，停稳暂停。','Repair a damaged pot in 12 pottery-wheel turns. Success needs 85% shape match and 90% intact area kept. You may deliver early; rest pauses the wheel.'],
   replaceKicker:['开始新挑战','A new commission'],replaceTitle:['先安放这一件。','Keep this moment.'],replaceBody:['工作台上还有未收藏的作品。开始新挑战会替换它。','There is an uncollected piece on your wheel. Starting a new commission replaces it.'],continuePiece:['继续当前作品','Continue this piece'],replacePiece:['放弃并开始','Discard & start'],finishFirst:['先完成当前挑战','Finish my current challenge first'],close:['关闭','Close'],
   start:['开始这件 ↗','Start this piece ↗'],unsaved:['新一局会替换当前陶坯。','A new round replaces the piece on your wheel.'],keepFirst:['先收藏当前作品','Keep my current piece first'],
@@ -30,7 +30,7 @@ export function createOrders(hooks){
   repairWall:['杯壁','wall'],repairRim:['口沿','rim'],repairBelly:['腹部','belly'],repairWaist:['束腰','waist'],repairNeck:['瓶颈','neck'],
   repairProgress:['损伤修复','Flaw repaired'],repairPreserved:['完好区保留','Intact area kept'],repairReady:['可交付','Ready to deliver'],repairProtect:['轻一点，保护完好部位','Ease off. Protect the intact area'],repairGoal:['修复：','Rescue: '],repairSuccess:['修复成功。','Pot rescued.'],repairRetry:['再修一次。','Try another rescue.'],repairExhausted:['12 圈已经用完。','All 12 turns are spent.'],repairThreshold:['达标线：轮廓 85% · 完好区 90%。','Goal: 85% shape match · 90% intact area kept.'],
   goal:['目标：','Target: '],submit:['交付器形 ↗','Set this shape ↗'],practice:['模拟练习','SIMULATED PRACTICE'],live:['实时数据局','LIVE-DATA ROUND'],
-  practiceNote:['当前使用模拟跑轮；切换“停跑”可练习应对。','Using simulated activity. Try Rest to practise a stop.'],liveNote:['真实跑轮已连接；仓鼠决定何时开工。','The real wheel is connected. The hamster decides when work begins.'],signalNote:['实时信号尚未就绪。可先等待，或切换模拟练习。','Live data is not ready. You can wait or choose Simulation.'],
+  practiceNote:['当前使用模拟跑轮；切换“停跑”可练习应对。','Using simulated activity. Try Rest to practise a stop.'],liveNote:['真实跑轮已连接；仓鼠决定何时开工。','The real wheel is connected. The hamster decides when work begins.'],bufferNote:['当前使用最近一次真实动力缓冲，最多 90 秒。','Using the last real wheel power, buffered for up to 90 seconds.'],signalNote:['实时信号尚未就绪。可先等待，或切换模拟练习。','Live data is not ready. You can wait or choose Simulation.'],
   pausedHint:['信号未知 · 本局已暂停','Signal unknown · round paused'],waitingHint:['转盘停稳 · 等仓鼠开工','Wheel at rest · waiting for the hamster'],
   used:['消耗动力','Turns used'],stops:['中途停跑','Stops along the way'],order:['目标器形','Commission'],decorate:['去施釉 ↗','Choose a glaze ↗'],again:['换一份题目','Choose another'],scoring:['成绩随作品保存在本机；模拟与实时分别标注。','Results stay with your piece on this device, labelled as simulation or live data.'],
   doneTitle:['这件，定形了。','Your shape is set.'],emptyTitle:['本局还没有加工','No shaping this round.'],exhausted:['20 圈已经用完。接下来，为它挑一层釉。','All 20 turns are spent. Choose a glaze for your piece.'],delivered:['你选择了在这里定形。接下来可以施釉。','You chose to set this shape. It is ready for glaze.'],settled:['仓鼠这一跑结束了。它留下的最后一点动力，决定了这件器形。','This run has ended. The last of its momentum set the shape of this piece.'],empty:['没有加工笔触，本局不计完成度。','No shaping strokes were made, so this round has no match score.']
@@ -97,7 +97,7 @@ export function createOrders(hooks){
   document.querySelectorAll('[data-play]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.play===play)));
   put('order-rules',t(play+'Rule'));put('selected-order-name',t(selected));put('selected-order-tip',play==='repair'?repairCue(P.repairCommission(selected)):t(selected+'Tip'));
   document.body.dataset.challenge=state?state.status:'free';$('open-order').disabled=!hooks.ready();$('start-order').disabled=!hooks.ready();$('order-hud').hidden=!state;document.querySelector('.intro-actions').hidden=!!state;$('new').hidden=!!state;
-  $('order-unsaved').hidden=!hooks.dirty();$('order-keep-first').hidden=!hooks.dirty();put('order-keep-first',t(state?.status==='running'?'finishFirst':'keepFirst'));put('order-start-source',t(!hooks.ready()?'notReady':hooks.mode()==='sim'?'practiceNote':hooks.signal().state==='unknown'?'signalNote':'liveNote'));
+  $('order-unsaved').hidden=!hooks.dirty();$('order-keep-first').hidden=!hooks.dirty();put('order-keep-first',t(state?.status==='running'?'finishFirst':'keepFirst'));put('order-start-source',t(!hooks.ready()?'notReady':hooks.mode()==='sim'?'practiceNote':hooks.signal().buffering?'bufferNote':hooks.signal().state==='unknown'?'signalNote':'liveNote'));
   const heading=state?t(state.play+'Title'):hooks.headline(),lead=state?t(state.play==='repair'?'repairGoal':'goal')+t(state.id):hooks.lead();
   if(document.querySelector('.intro h1').textContent!==heading)document.querySelector('.intro h1').textContent=heading;
   if(document.querySelector('.intro .lead').textContent!==lead)document.querySelector('.intro .lead').textContent=lead;
@@ -107,8 +107,8 @@ export function createOrders(hooks){
   const metrics=state.repair?P.repairMetrics(hooks.profile(),state.repair,state.edited):null;
   put('order-count-label',t(limited?'remaining':'spent'));put('order-remaining',(limited?Math.max(0,budget-state.used):state.used).toFixed(1));put('order-match',P.similarity(hooks.profile(),state.target)+'%');$('order-progress').hidden=!limited;$('order-progress').max=budget;$('order-progress').value=budget-state.used;$('order-progress').setAttribute('aria-label',t('remaining'));
   if(metrics&&$('repair-metrics'))put('repair-metrics',repairSummary(metrics)+(metrics.success?' · '+t('repairReady'):''));
-  let hint=!running?'finished':sample.state==='unknown'?'unknown':sample.state==='idle'?(hooks.rpm()>=.5?'coasting':'waiting'):hooks.rpm()>=23?'sprinting':'running';
-  if(running&&sample.state!=='unknown'&&state.play==='burst')hint=!state.armed?'burstWait':sample.state==='idle'?'burstCoast':'burstRun';
+  let hint=!running?'finished':sample.buffering?'bufferNote':sample.state==='unknown'?'unknown':sample.state==='idle'?(hooks.rpm()>=.5?'coasting':'waiting'):hooks.rpm()>=23?'sprinting':'running';
+  if(running&&!sample.buffering&&sample.state!=='unknown'&&state.play==='burst')hint=!state.armed?'burstWait':sample.state==='idle'?'burstCoast':'burstRun';
   const repairHint=running&&metrics&&sample.state==='running'?(metrics.preservation<90?t('repairProtect'):repairCue(state.repair)):null;
   put('order-state',repairHint||t(hint));
   if(running&&sample.state==='unknown')put('stage-hint',t('pausedHint'));

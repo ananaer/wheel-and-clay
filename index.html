@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101114"><meta name="description" content="真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。"><title>Wheel &amp; Clay · A hamster-powered pottery studio</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="home.css"><link rel="stylesheet" href="share.css"><link rel="stylesheet" href="companions.css"><link rel="stylesheet" href="brand.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101114"><meta name="description" content="真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。"><title>Wheel &amp; Clay · A hamster-powered pottery studio</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="home.css"><link rel="stylesheet" href="share.css"><link rel="stylesheet" href="companions.css"><link rel="stylesheet" href="brand.css"><link rel="stylesheet" href="power-link.css"></head>
 <body>
 <header class="header">
  <a class="brand" href="#home" aria-label="轮间"><span class="brand-mark" aria-hidden="true"></span><span data-i18n="brand">轮间</span><span class="brand-divider"></span><small data-i18n="studio">仓鼠陶艺工作室</small></a>
@@ -20,15 +20,7 @@
  </section>
   <section class="motor-card" aria-label="转盘动力" data-label="motorLabel">
    <div class="motor-heading"><span class="motor-dot"></span><strong>Squeektoshi</strong></div>
-   <div class="hamster-telemetry">
-    <svg class="hamster-wheel" viewBox="0 0 100 96" aria-hidden="true">
-     <path class="wheel-stand" d="M49 47 38 87M49 47 62 87M26 89h48"/>
-     <circle class="wheel-rim" cx="49" cy="43" r="37"/>
-     <g id="hamster-rotor"><circle cx="49" cy="43" r="32" stroke-dasharray="1 6"/><path d="M49 11v10m32 22H71M49 75V65M17 43h10"/><circle class="wheel-magnet" cx="49" cy="6" r="3"/></g>
-     <g id="hamster-body"><image href="./brand-research/official/squeekchain-hamster-mark.svg" x="25" y="26" width="48" height="33"/></g>
-    </svg>
-    <div class="input-reading"><span class="reading-label" data-i18n="inputSpeed">Hamster wheel</span><div class="rpm-row"><span id="rpm">—</span><span class="rpm-unit" data-i18n="rpmUnit">RPM</span></div><div class="drive-link"><i aria-hidden="true"></i><small data-i18n="gearedDrive">Geared drive</small></div><span class="reading-label" data-i18n="potterySpeed">Pottery wheel</span><div class="rpm-row pottery-rpm-row"><span id="pottery-rpm">—</span><span class="rpm-unit" data-i18n="rpmUnit">RPM</span></div></div>
-   </div>
+   <div class="hamster-telemetry"><div id="studio-power-link"></div></div>
    <div class="power-effect"><p id="power-effect" role="status">跑轮在动，陶土可以塑形。</p><p id="recent-activity" class="recent-activity" hidden></p></div>
    <div class="source-row"><span id="source-badge">模拟练习</span></div>
    <div class="mode-switch" role="group" data-label="sourceLabel"><button id="live" aria-pressed="false" data-i18n="live">实时</button><button id="sim" aria-pressed="true" data-i18n="sim">模拟</button></div>

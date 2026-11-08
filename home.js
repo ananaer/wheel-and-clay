@@ -1,3 +1,4 @@
+import {createPowerLink} from './power-link.js';
 import { createCraftDemo } from './craft-demo.js';
 /* 首页只消费产品统一信号。按钮向应用发请求，不在这里生成模拟或实时数据。 */
 export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onModeChange=()=>{},onSimChange=()=>{}}={}){
@@ -8,6 +9,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   lead:['一只真实仓鼠提供动力。\n你的双手，赋予泥土形状。','One real hamster brings the energy.\nYour hands turn it into something.'],
   sourceLabel:['选择动力来源','Choose the power source'],live:['实时','Live'],sim:['模拟','Simulate'],
   simulationLabel:['控制模拟动力','Control simulated power'],run:['跑动','Run'],rest:['休息','Rest'],
+  bufferSignal:['动力缓冲中 · 等待新样本','Buffered power · waiting for a new sample'],
   simSignal:['模拟动力 · 不代表真实仓鼠状态','Simulated power · not the real hamster'],
   liveRunning:['实时已连接 · 跑轮正在转动','Live connection · the wheel is moving'],
   liveIdle:['实时已连接 · 跑轮暂时静止','Live connection · the wheel is at rest'],
@@ -52,14 +54,15 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   <div class="home-foot">
    <div class="home-power-controls">
     <div class="home-modes" role="group"><button type="button" data-home-mode="live" aria-pressed="true" data-home-text="live"></button><button type="button" data-home-mode="sim" aria-pressed="false" data-home-text="sim"></button></div>
-    <div class="home-source-info"><div class="home-reading"><span class="home-status-led" aria-hidden="true"></span><span class="home-speed"><span data-home-text="hamsterWheel"></span><strong class="home-rpm">—</strong><small data-home-text="rpmUnit"></small></span><span class="home-drive-link"><i aria-hidden="true"></i><small data-home-text="gearedDrive"></small></span><span class="home-speed"><span data-home-text="potteryWheel"></span><strong class="home-pottery-rpm">—</strong><small data-home-text="rpmUnit"></small></span><span class="home-motor-state" hidden></span></div><p class="home-signal" id="home-live-signal" role="status" aria-live="polite"></p></div>
+    <div class="home-source-info"><div class="home-power-link"></div><span class="home-motor-state" hidden></span><p class="home-signal" id="home-live-signal" role="status" aria-live="polite"></p></div>
    </div>
    <div class="home-sim-controls" role="group" hidden><button type="button" data-home-sim="steady" aria-pressed="false"><span aria-hidden="true">▶</span><span data-home-text="run"></span></button><button type="button" data-home-sim="rest" aria-pressed="false"><span aria-hidden="true">Ⅱ</span><span data-home-text="rest"></span></button></div>
    <button type="button" class="home-enter" id="home-enter"><span data-home-text="enter"></span><span aria-hidden="true">↗</span></button>
   </div>
  </div>`;
  const $=selector=>root.querySelector(selector);
- const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.home-rpm'),potteryRpmLabel=$('.home-pottery-rpm'),motorState=$('.home-motor-state'),simControls=$('.home-sim-controls'),fallbackText=$('.home-fallback-text'),etchStatus=$('.home-etch-status');
+ const powerLink=createPowerLink({root:$('.home-power-link'),lang:getLang});
+ const canvas=$('.home-canvas'),art=$('.home-art'),rotor=$('.home-rotor'),signal=$('.home-signal'),rpmLabel=$('.power-raw'),potteryRpmLabel=$('.power-actual'),motorState=$('.home-motor-state'),simControls=$('.home-sim-controls'),fallbackText=$('.home-fallback-text'),etchStatus=$('.home-etch-status');
  const modeButtons=[...root.querySelectorAll('[data-home-mode]')],simButtons=[...root.querySelectorAll('[data-home-sim]')],textNodes=[...root.querySelectorAll('[data-home-text]')];
  const demo=createCraftDemo({count:window.Pottery.COUNT});
  let demoState=demo.snapshot(),appliedProfile=null,demoGlaze='turquoise';
@@ -75,6 +78,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   const speed=Number.isFinite(rpm)?Math.max(0,rpm):0;
   const delta=Math.min(.1,Math.max(0,dt||0));
   applyDemo(demo.step({dt:delta,rpm:speed,powered:lastSignal.state==='running',reducedMotion:motion.matches}));
+  powerLink.tick(delta,demoState.angularVelocity*60/(Math.PI*2));
   // 塑形阶段更新同一旋转体；上釉/刻印只更新 uniform。动力读数每秒最多更新四次。
   motionUiElapsed+=delta;if(motionUiElapsed<.25)return;motionUiElapsed%=.25;
   const signalStep=Math.round(Math.min(1,speed/10)*20);
@@ -142,11 +146,10 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   setAttribute(root,'data-power-mode',lastSignal.mode);setAttribute(root,'data-wheel-state',state);if(simControls.hidden===simulated)simControls.hidden=!simulated;
   for(const button of modeButtons)setAttribute(button,'aria-pressed',button.dataset.homeMode===lastSignal.mode);
   for(const button of simButtons)setAttribute(button,'aria-pressed',simulated&&(button.dataset.homeSim==='rest'?state==='idle':state==='running'));
-  put(signal,t(simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));setAttribute(signal,'data-state',state);
+  put(signal,t(lastSignal.buffering?'bufferSignal':simulated?(unknown?'simUnknown':'simSignal'):state==='running'?'liveRunning':state==='idle'?'liveIdle':'unknown'));setAttribute(signal,'data-state',state);
   put(potteryRpmLabel,unknown?'—':(demoState.angularVelocity*60/(Math.PI*2)).toFixed(1));
-  setAttribute(root,'data-sensor-rpm',unknown?'':lastSignal.rpm);setAttribute(root,'data-pottery-target-rpm',unknown?'':lastSignal.potteryRpm);
-  put(rpmLabel,unknown?'—':lastSignal.rpm>0&&lastSignal.rpm<.1?'<0.1':(lastSignal.rpm||0).toFixed(1));
-  put(motorState,t(motorCaption()));
+  setAttribute(root,'data-sensor-rpm',(lastSignal.sourceState??state)==='unknown'?'':(lastSignal.sourceRpm??lastSignal.rpm));setAttribute(root,'data-buffering',!!lastSignal.buffering);setAttribute(root,'data-buffer-remaining-ms',lastSignal.bufferRemainingMs||0);setAttribute(root,'data-pottery-target-rpm',unknown?'':lastSignal.potteryRpm);
+  put(motorState,t(motorCaption()));powerLink.render(lastSignal,demoState.angularVelocity*60/(Math.PI*2));
   if(state!=='running')applyDemo(demo.step({dt:0,rpm:0,powered:false,reducedMotion:motion.matches}));
   put(etchStatus,t(demoCaption()));
   const stamp=lastSignal.observedAt;
@@ -170,10 +173,10 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
    const rpm=state==='unknown'?null:state==='idle'?0:Math.max(0,value.rpm),potteryRpm=window.Pottery.potteryDrive(rpm);
    let observedAt=number(value.observedAt)??(typeof value.observedAt==='string'&&Number.isFinite(Date.parse(value.observedAt))?Date.parse(value.observedAt):null);
    if(observedAt!==null&&Math.abs(observedAt)>8.64e15)observedAt=null;
-   lastSignal={state,mode,rpm,potteryRpm,workUnits:recordValue(value.workUnits),block:recordValue(value.block),observedAt};
+   lastSignal={...value,state,mode,rpm,potteryRpm,workUnits:recordValue(value.workUnits),block:recordValue(value.block),observedAt};
    preview?.setRpm(state==='running'?potteryRpm:0);renderSignal();
   },
   setPalette(value){if(typeof value!=='string'||!value||value===demoGlaze)return;demoGlaze=value;preview?.setGlaze(value);},
-  dispose(){if(disposed)return;disposed=true;observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());preview?.dispose();}
+  dispose(){if(disposed)return;disposed=true;observer?.disconnect();sizeObserver?.disconnect();listeners.splice(0).forEach(remove=>remove());powerLink.dispose();preview?.dispose();}
  };
 }
