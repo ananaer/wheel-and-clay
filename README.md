@@ -1,125 +1,106 @@
-# 轮间 / Wheel & Clay
+# Wheel & Clay
 
-[更新记录](CHANGELOG.md) · [发布验收](QUALITY.md) · [最新宣传片](media/wheel-and-clay-intro.mp4) · [分享封面](media/wheel-and-clay-poster.jpg)
+**His wheel. Your hands.**
 
-一只真实仓鼠为虚拟转盘提供节奏，你亲手塑造陶器。当前版本：2026-11-08（UTC+8）。
+A browser-based 3D pottery playground powered by Squeekchain. A real hamster sets the rhythm; you give the clay its shape.
 
-自由创作、九种器形和三种挑战共用同一个可编辑的三维转盘。16 种釉色与 4 种表面工艺可以自由组合，完成后留下本机作品卡。默认英文与孔雀蓝配色，界面可完整切换中文；主动选择的语言和 Squeek 配色在本机保留。无需钱包或登录。
+**English** · [简体中文](README.zh-CN.md)
 
-桌面首页以“HE RUNS. / YOU CREATE.”、官方点阵仓鼠与单件真实三维陶器构成动态海报。首页连续演示真实三维制作，时长随动力与前向对正距离变化：素坯直筒局部鼓腹、收颈、翻口并拉高，双色釉从口沿流下，最后以40行高速蛇形扫描留下官方仓鼠金印。标准模拟速度下刻印约1.8秒，扫描头约5–6 CSS像素；成品保留并继续转动。游戏动力停止时会冻结当前制作进度并熄光，再开工从原处继续；LIVE 的短暂零速或未知先经过下述 90 秒缓冲，SIM 不缓冲；Replay demo 重播全流程。演示轮廓与用户作品隔离，仅配色选择单向同步，不修改游戏器形、成绩、圈数或藏品。底部直接选择实时／模拟和跑动／休息。向下进入 Squeek 配色区，三个官方 Sepolia 样例分别映射烟紫、珊瑚橘、孔雀蓝；选择时预设釉色，在施釉步骤应用，塑形不变。它们不提供角色技能；配色来源 ID 随收藏和作品卡保存。物料来源见 `BRAND-ASSETS.md`。
+[Play in your browser](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/) · [Watch the 41-second film](media/wheel-and-clay-intro.mp4) · [Changelog](CHANGELOG.md)
 
-这里的 Squeek 配色只记录样例的颜色灵感与 ID，不表示持有该 NFT。陶器、成绩和作品卡保存在本机，不铸造 NFT、不写入链上，也不代表 Squeekchain 官方出品或背书。
+[![A hand-shaped double gourd with turquoise flowing glaze in the Wheel & Clay studio, shown in Simulation mode.](media/studio.jpg)](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/)
 
-工作台（`#studio`）、挑战工坊（`#orders`）和藏品（`#collection`）是独立视图。主视图用动态双轮示意和简短状态呈现仓鼠跑轮到陶轮的减速关系，点击后展开两端数字；传感器原始读数与实际陶轮转速分开，并保留明确的模拟／实时来源；操作区只保留当前步骤需要的工具。官方物料的来源与使用边界见 `BRAND-ASSETS.md`。
+*The actual studio in Simulation mode. Desktop browser with WebGL required. No wallet or account.*
 
-## 打开与创作
+## Make something only you could make
 
-用普通桌面浏览器打开 `Wheel-and-Clay.html`，或通过静态网页服务访问 `index.html`。独立 HTML 的依赖已内嵌，无须安装。实时模式需要联网，模拟模式不依赖外部数据。
+- **Shape it by hand.** Hold the clay and gently push or pull. Choose a starting form, adjust your touch, and undo or redo. Keyboard and precision tools are available too.
+- **Find a challenge.** Nine target forms, three challenge modes, and a golden silhouette to work toward.
+- **Give it a finish.** Combine 16 glaze colours with gloss, matte, speckled or two-tone flow. Turn the piece to inspect its surface.
+- **Pass it around.** Keep a piece, download its card, or copy a link that opens the same shape and glaze in an interactive 3D view.
 
-1. 普通首页先以明确标注的模拟动力开工，后台读取真实信号；首次取得新鲜硬件正轮速可接入实时，初次为零或未知时保留模拟演示。主动选择实时／模拟、进入共创或工作台后锁定来源，不在创作中自动切换。带 `mode=live` 的明确链接保留真实来源；初次为零或未知且没有有效正样本历史时，不生成动力。已有真实跑动历史后，零速和未知按 90 秒缓冲规则处理。模拟可选匀速、冲刺或停跑，始终标为非实时。
-2. 按住陶器后向内或向外轻推，并保持片刻。位移决定施力强弱，形状随按压时间逐渐变化；松手即停。减速后的陶轮速度改变塑形响应；游戏动力归零后，陶轮靠惯性减速，停稳不能加工。LIVE 缓冲期间可以继续加工，界面同时保留真实源状态。
-3. 自由创作可选圆腹、直筒或敞口起形，调整指腹宽度并撤销／重做。精细工具支持高度滑块和收窄／拉宽按钮；画布聚焦后，上下方向键改变高度，左右键改变宽度。
-4. 完成拉坯后施釉。16 种颜色覆盖青绿、蓝、紫、粉、橘、黄、灰与黑白；光釉、哑釉、细斑釉、双色流釉分别改变表面反射或纹理，不只是更换名字。光泽滑块在所选工艺范围内微调。拖动器物观察内外壁，也可复位视角。
-5. 收藏作品会生成作品卡，保存在当前浏览器，最多保留 12 件；釉色、工艺、来源、共创角色与挑战结果随作品保存。旧作品不补造共创角色。清除浏览器数据会清空藏品。
-6. 音乐面板提供木与光、雨窗、籽间、月下小窝四首原创程序音景，选曲偏好保存在本机；首次合成通过 Worker 准备，播放中切曲淡入淡出。首次进入工作台或触碰陶器时，以这次用户手势开启原创音景；此前保持静音。手动静音、音量与转盘声偏好保存在本机，后续进入尊重静音选择。站内切页时音乐继续，网页进入后台则静音并暂停加工；浏览器未允许播放时，界面不会显示正在播放。
+Four original soundscapes accompany the studio. The interface defaults to English and can switch to Chinese.
 
-## 挑战工坊
+## Choose your pace
 
-九种器形是弧线杯、折线杯、喇叭瓶、束口瓶、圆腹罐、梨形瓶、纺锤瓶、葫芦瓶和花口瓶。每种都有独立的可编辑半径轮廓；金色虚线提供目标参照。
-
-| 玩法 | 起点与目标 | 结束方式 |
+| Mode | What you do | When it ends |
 | --- | --- | --- |
-| 临摹练习 | 从直筒陶坯开始，跟随目标轮廓练习 | 不限圈，满意时交付 |
-| 20 圈订单 | 从直筒陶坯开始，在有限转动中接近目标 | 提前交付，或 20 圈耗尽定形 |
-| 修坯委托 | 从局部鼓包或内陷的受损目标开始，只修坏处并保护其余 | 提前交付，或 12 圈耗尽定形；轮廓 ≥85% 且完好区保留 ≥90% 才成功 |
+| Freeform studio | Start with a vase, column or bowl and make your own shape. | Whenever you are ready to glaze. |
+| Open practice | Follow any of the nine target silhouettes. | No turn limit. |
+| Twenty turns | Shape toward a target with a limited wheel budget. | Set the shape early, or use all 20 pottery-wheel turns. |
+| Rescue a pot | Repair a local flaw while protecting the rest of the piece. | Set it early, or use all 12 turns; both repair and preservation matter. |
 
-修坯每题使用确定的损伤位置和方向，界面提示向内收或向外放，实时显示损伤修复比例与完好区保留程度。初始吻合度为 69%；没有加工，或加工后又恢复原状，都不能获得修复成功。结果区分别显示修复与保留情况。旧版“一跑定形”（`burst`）仅保留历史作品兼容，不再提供挑战入口。
+The turn budget belongs to the **virtual pottery wheel**. It is not a raw sensor count or an on-chain settlement. Scores are local; there is no online leaderboard.
 
-共同规则：
+## What the hamster actually changes
 
-- 圈数是**虚拟陶轮**的操作预算，由陶轮实际转速积分得到，不是原始传感器圈数或链上结算。仓鼠跑得快，预算消耗更快，塑形响应也更强。
-- LIVE 在已有有效正样本历史时，首次零速或未知启动同一个 90 秒缓冲阶段；期间按保留动力继续加工与消耗陶轮圈数。到期仍为零时，游戏动力变为 `idle/0`，陶轮惯性减速；到期仍未知时保持 `unknown/null`，冻结加工与预算，不伪装停跑。初次无正样本历史不造动力。SIM 停跑不缓冲。后台或其他视图暂停游戏，不在返回后追补加工。
-- 发生实际加工后可提前交付。定形后不能再修改器形或成绩，但仍能施釉、收藏。返回自由创作保留形状并退出挑战成绩关联。
-- 轮廓吻合度来自半径的均方根误差：`100 × clamp(1 − RMS / 0.45)`。修坯额外比较未受损区相对初始陶坯的偏差；修坏其他地方不能靠全局分数掩盖。
-- 未做任何加工的局不计完成度。结果包含器形、模式、成绩、圈数、已知跑动转为静止的次数及模拟来源；只要本局用过模拟，始终标记模拟练习。不设联网排行榜。
+Squeektoshi's public wheel-speed data drives a reduced, smoothed pottery-wheel speed. That speed changes how quickly the clay responds and how quickly a challenge uses its turns. When available game power stops, the wheel coasts down and shaping pauses.
 
-## 数据与边界
+- **Live:** reads the public `GET https://api.squeekchain.com/v1/status` endpoint every eight seconds. After a valid running sample, a 90-second buffer prevents a brief zero reading or connection gap from abruptly interrupting a piece. Raw readings remain separate from buffered game power; missing data is never reported as a confirmed stop.
+- **Simulation:** offers Steady, Sprint and Rest through the same game mechanics, with a visible simulation label. Rest takes effect without the Live buffer. A piece that used simulated power keeps that label.
+- **First visit:** the landing demonstration starts with clearly labelled simulated power. While you are on the homepage, it may switch to fresh running hardware data. Entering the studio or choosing a source locks that choice for your session.
 
-- 每 8 秒只读 `https://api.squeekchain.com/v1/status`，超时 7 秒；仓鼠跑轮 RPM 始终为 `rpmMilli / 1000`，不改写真实遥测。
-- 陶轮使用游戏传动：输入 0–36 RPM 按 3:1 减速，之后平滑趋近 28 RPM；仓鼠 60 / 80 / 110 RPM 对应陶轮目标约 18.3 / 21.6 / 24.6 RPM。原有马达惯性负责启动、变速和停止。数字展开区分别显示原始传感器读数与实际输出：刻印制动时，首页实际转速会降到零；工作台使用实际马达转速。原始未知显示“—”，原始零速保持零；LIVE 缓冲保留的是游戏动力，不改写这些源读数。
-- LIVE 缓冲从首次零速或未知开始，用 `performance.now()` 单调时钟计满 90 秒。零速与未知互换不重启计时；只有时间戳更新的有效正样本才能恢复，旧正样本或仅接收时间更新不能续期。到期停止保留动力；切换来源模式清除历史，初次零速或未知不能凭空获得动力。
-- 模拟匀速／冲刺分别产生约 60／110 RPM 的虚拟传感器数据，再走同一传动，不进入 LIVE 缓冲；始终标为模拟。塑形强度、音乐轮声、作品陶轮圈数、20 圈订单和 12 圈修坯均使用实际陶轮速度。
-- 只接受新鲜、硬件来源、已知设备状态的有效转速。传感器状态中，有效零速仍为零；断线、过期、非硬件来源、缺少转速仍为未知。游戏是否继续由明确标记的缓冲状态单独决定。首页自动演示独立选择带模拟标识的动力，不修改原始硬件数据。
-- 连接详情显示 HTTP、耗时、读取成功时间和硬件采样时间。失败后自动重试，也可手动刷新。实时接口曾在本机返回 HTTP 200 与硬件零速，也出现过超时、代理连接失败及 Cloudflare 验证页，不能承诺所有网络下持续可用。
-- 2026-11-08 09:42（UTC+8）已观察到新鲜硬件非零样本，连接详情记录约 67 RPM、HTTP 200；这证明当时成功收到跑动信号，不等于长期稳定性保证。累计工作数记录有效磁铁通过事件，不直接等于完整仓鼠跑轮圈数。模拟录像保留模拟标记；有效零速不等于仓鼠睡着。
-- 近 7 日统计若有带时间戳的正转速峰值，可显示“曾有跑动”。它不是最近一次跑动时间或睡眠起点；统计不可用时不生成记录，也不影响实时接口。
-- 陶轮惯性、塑形作用与预算属于游戏规则，不是物理测量。无钱包、签名、交易、账户、第三方统计或代用户发布功能。
+The homepage's shaping, glazing and laser-engraving sequence is a separate introduction. Laser engraving is not a player-operated studio tool.
 
-## 实现与验证
+## Keep and share
 
-Three.js 实时旋转体使用 129 个纵向控制点和 144 个圆周分段，包含内壁、圆唇和闭合底部。材质、摄影棚反射、金属转盘和接触阴影实时渲染，没有器物背景图或预渲染状态图。转盘刻度和金色零位转动，固定黄铜指针及器物上的官方仓鼠轮廓窑印帮助辨认速度与停止；金色窑印是本项目的视觉延展。
+Finish and collect your piece, then choose **Copy piece link**. The receiver can rotate the same 3D piece without replacing their current work.
 
-`engraving.js` 提供对正、扫描、成品停留的纯时序；首页的扫描光、金属刻痕均在实际曲面材质中渲染，没有可用游戏动力时不推进；LIVE 缓冲期间使用保留动力，减少动态效果偏好直接显示完整印章。`engine.js` 提供可离线测试的形变、传动、LIVE 缓冲、修坯判定与撤销规则；`glazes.js` 定义 16 种釉色和 4 种工艺；`core.js` 归一化接口。Three.js 使用既有本地副本，许可证保留在 `vendor/THREE-LICENSE.txt`，没有新增安装依赖。
+- Up to 12 pieces are stored in the current browser. Clearing browser storage removes that local collection.
+- A piece link carries its compact design in the URL fragment. It does not upload an image or include a score, account or local identifier. Anyone with the link can view the design.
+- Shared Live/Simulation labels describe the maker's session; they are not hardware attestations or ownership proofs.
+- Image sharing depends on browser support. The X entry prepares text and a link; you attach the image and confirm posting yourself.
+
+## Run locally
+
+Use Python 3 and a desktop browser with WebGL. No package installation is required.
 
 ```sh
-node tests/test_engine.cjs
-node tests/test_power_buffer.cjs
-node tests/test_glazes.mjs
-node tests/test_audio_activity.mjs
-node tests/test_share.mjs
-node tests/test_piece_link.mjs
-node tests/test_companions.mjs
-node tests/test_preview_rendering.mjs
-node tests/test_motion.mjs
-node tests/test_opening.mjs
-node tests/test_engraving.mjs
-node tests/test_craft_demo.mjs
-node --check app.js
-node --check scene.js
-node --check orders.js
+git clone https://github.com/ananaer/wheel-and-clay.git
+cd wheel-and-clay
+python3 -m http.server 8000 --bind 127.0.0.1
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Live mode needs access to the Squeekchain API; Simulation can be played without API data. Locally created share links open the public site.
+
+To create a self-contained HTML file and a source archive:
+
+```sh
 python3 build.py
 ```
 
-浏览器实测和截图见 `QA.md`、`qa/`；当前引擎测试覆盖九题在慢速、匀速和冲刺下的真实施力修复，以及无加工、错误方向、伤及完好区、停跑和断线。`qa/wheel-motion.gif`、`qa/hamster-connection.gif` 及对应 MP4 是历史版本的模拟模式运行记录，不是硬件跑动录像，也不作为本轮缓冲与动态双轮界面的验收结论。
+This produces `Wheel-and-Clay.html` and `Wheel-and-Clay.zip`. These are generated outputs, not files supplied by a fresh clone.
 
-本轮 LIVE 缓冲已有 16 项纯函数测试，覆盖 90 秒边界、旧样本、零速／未知切换、恢复与重置；这些测试不代替浏览器验收。154 秒双夹具浏览器记录已独立复核（1465 状态样本）；另20秒1201逐帧样本验证制作与起停，最长帧17.7ms、无倒转。独立视觉与交互／连续性两关已分别签署实际交付文件哈希，发布检查见 `QUALITY.md`。
+### Development checks
 
-创作参考 [Let's Create! Pottery](https://potterygame.com/) 的手动塑形与施釉；网页布局、模型、代码与仓鼠动力规则为本项目制作，未复制参考站素材。
+The test suite is run with Node.js 24. It uses local fixtures and does not need a wallet or a live API.
 
-## 部署与交付
+```sh
+for test in tests/test_*.cjs tests/test_*.mjs; do
+  node "$test" || exit 1
+done
+```
 
-当前交付包含独立 HTML、源码 ZIP 和已部署的 **Cloudflare 独立静态 Worker**。公开试玩：[https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev](https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev)。已在公开站实际完成修坯、施釉、收藏和刷新恢复。源码中的 `qa/*.html` 是测试夹具，不作为公开游戏页面发布。游戏不需要常驻本机服务；本机 `127.0.0.1` 预览仅用于验收。
+Logic tests cover shaping, wheel power, the Live buffer, challenge scoring, materials, audio state and share-link validation. Browser interaction and motion review are separate checks; see [QUALITY.md](QUALITY.md).
 
-公开版本与行为变更见 [CHANGELOG.md](CHANGELOG.md)。独立 HTML、源码 ZIP 与 Worker 静态页面由同一份源码构建；每次发布以更新记录中的打包哈希和公开站复验结果对应。
+### Project map
 
-公开试玩可使用 Worker 的 `workers.dev` 地址。官方 Direct 提交还要求可控制 DNS 的归属证明，以及官方生成的页面标签和公开 GitHub README 验证行；这是审核归属要求，不是游戏运行要求，也不意味着必须购买新域名。正式提交以 [官方 Code 页面](https://squeekchain.com/genesis/code) 当次生成的字段和验证内容为准。
+| File | Responsibility |
+| --- | --- |
+| `core.js` / `engine.js` | API normalization, shaping, transmission, power buffering and scoring |
+| `scene.js` / `glazes.js` | Three.js geometry, materials and interaction |
+| `app.js` / `orders.js` | Studio state and challenge flows |
+| `home.js` / `craft-demo.js` / `engraving.js` | Homepage introduction |
+| `share.js` / `piece-link.js` | Cards and portable 3D piece links |
+| `audio.js` / `activity.js` | Original procedural sound and page activity |
+| `build.py` / `deploy/` | Standalone build and static-hosting preparation |
 
-## 原创音景《木与光》
+## Credits and project status
 
-58 BPM、约 50 秒循环的原创柔钢琴／木质音景：低音区稀疏旋律、柔和木音与缓慢铺开的空气和弦，避免强拍催促塑形。浏览器直接生成 PCM，无音频 CDN 或第三方曲目。实际陶轮匀速时每四拍轻敲，冲刺时每两拍轻敲；LIVE 缓冲期间随保留动力运行，停稳或缓冲耗尽后的未知动力去掉这层，转盘声随速度淡入淡出。默认音量 36%，首次进入工作台或触碰陶器的手势开启，记住用户手动静音。只有实际 AudioContext 处于 running 状态，界面才显示播放中；拒绝或中断播放后可以重试。
+An independent Squeekchain community project. Pottery, scores and cards are created in the browser; the app does not mint NFTs, sign transactions or register work on-chain.
 
-`node render_music_preview.mjs` 用同一生成器和默认音量导出 `qa/pottery-music-preview.wav`，并记录 `qa/pottery-music-metrics.json`。早期版本的音频与活动测试记录为 14/14，覆盖波形峰值、循环接缝和播放状态；该历史记录不作为本轮改动的通过结论。播放状态单元测试使用受控音频上下文，不能替代真实浏览器或主观听感验收。
+- Official Squeekchain marks and three Sepolia Squeek samples are documented in [BRAND-ASSETS.md](BRAND-ASSETS.md). Palette inspiration does not imply NFT ownership or official endorsement.
+- Three.js is bundled locally with its [MIT license](vendor/THREE-LICENSE.txt).
+- This repository does not currently specify a project-wide license.
 
-## 首页与分享
-
-首页与工作台消费同一套实时／模拟动力规则。主视图以动态双轮与简短状态说明传动，点击展开数字；源读数与陶轮实际速度独立保留。模拟模式可切跑动与休息；LIVE 的有效零速、未知和正在缓冲分开表达，90 秒到期后再按当前源状态撤去保留动力。点击“开始你的创作”或自然下滑，先进入三位 Sepolia 样例的配色选择，再进入工作台。换配色不重置器形；随后仍可手动施釉。顶部导航、音乐和语言开关在滚动时保留；挑战、藏品仍为独立页面。
-
-首页制作演示只同步配色，与当前作品几何和挑战预算隔离。陶器和官方仓鼠都离开扣除固定导航后的可视区域时，首页动画暂停；工作台离屏、被对话框遮挡或页面进入后台时暂停加工与挑战计数。
-
-收藏后可下载 1200×1500 作品卡，包含器物、所选配色伙伴、Sepolia 样例标识、模拟／实时来源和成绩（如有），并打开带文案与专属作品链接的 X 入口（缺少有效器形的旧记录保留试玩链接）。旧作品不会补造未记录的角色身份。桌面浏览器需要用户手动附上 PNG 并确认发布；支持文件分享的设备提供系统分享按钮。不自动上传、不读取账号、不代发。
-
-## 连续运动验收
-
-打开 `index.html?qa=motion&mode=sim`。右下的“流畅度验收”只在显式 QA 参数下出现；普通访问无额外计时器、采样 RAF 或报告 DOM。采样按钮等待 2 秒再记录 20 秒，页面帧与每个 WebGL 场景分别统计。
-
-每次涉及动画、渲染、首页构图的修改，必须分别测首页匀速、工作台持续塑形、首页到工作台往返滚动；还要点停跑看惯性停止、回到首屏看恢复、导出作品卡验证实际渲染结果。不能用静态截图、短片段或平均 FPS 代替。
-
-固定目标 60Hz；预热 1.5 秒后每场景至少 600 个样本、10 秒才可判定。p95 ≤25ms、p99 ≤33.34ms、迟到帧 ≤1%，可见 >50ms 卡顿必须排查。场景不可见的时间单独报告；不得通过反复重置预热或截断物理 dt 隐藏长帧。滚动时某个场景短暂可见、样本不足，就保留“证据不足”，页面采样通过也不代表该场景通过。帧间隔是浏览器调度证据，仍需人工观看连续画面。原始 JSON 位于面板“完整原始报告”，保存到 `qa/integration/`。
-
-运动验收还必须记录实际 `presentationAngle`、`frameSerial`、`frameNow`、`frameDt` 和 `frameRawDt`，逐帧检查角速度、倒转及工序交接。帧率正常也可能因时间被挤到某一帧而忽快忽慢。首页对正只向前滑行减速，扫描后缓慢恢复；重播继承当前转角与速度。场景统一按 RAF 时间差积分，离屏和恢复首帧不追补后台时间。测试中的受控时钟与渲染器只能证明逻辑，不能替代真实浏览器完整制作、暂停恢复和重播记录。
-
-### Share a piece
-
-Keep a finished piece, then choose **Copy piece link**. The link opens a read-only 3D view of that exact profile and glaze. It carries a compact, validated design in the URL fragment; no server upload, wallet or account is needed. Opening it does not replace the viewer's work or add to their collection. X and device sharing also use this piece link; attaching the image still needs the sharing app's support or a manual paste.
-
-The shared source label is maker-supplied, not a verified hardware or ownership claim. Scores and local identifiers are omitted. If an older saved record has no usable geometry, sharing falls back to the public play link.
+Found a bug or have a game idea? [Open an issue](https://github.com/ananaer/wheel-and-clay/issues).
