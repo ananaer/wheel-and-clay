@@ -49,3 +49,27 @@
 @keyframes kiln-stamp-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes kiln-receipt-in{from{opacity:.55;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.kiln-mint-shine,.kiln-mint-halo,.kiln-mint-celebrate .kiln-mint-status::after{display:none}.kiln-mint-celebrate .kiln-piece-stamp,.kiln-mint-celebrate .kiln-mint-status{animation:none}.kiln-confirmation-meter i{transition:none}.kiln-page[data-mint-phase=verified] .kiln-nft-link:hover{transform:none}}
+
+/* 入块成功立即反馈；12块与完整作品核验收在可选详情中，不阻断创作。 */
+.kiln-mint-sync-details{margin-top:15px;border-top:1px solid #c5b68025;padding-top:12px;color:#9fae97;font:10px/1.7 var(--sans)}
+.kiln-mint-sync-details summary{width:fit-content;cursor:pointer;color:#a6b59a;list-style:none}.kiln-mint-sync-details summary::after{content:' +';margin-left:8px;color:#d8c38b}.kiln-mint-sync-details[open] summary::after{content:' −'}.kiln-mint-sync-details summary::-webkit-details-marker{display:none}
+.kiln-mint-sync-details .kiln-confirmation-meter{margin-top:15px;height:2px}.kiln-mint-sync-details .kiln-mint-retry{font-size:10px;color:#a9b59d}
+.kiln-continue{display:block;width:100%;margin-top:12px;min-height:44px;padding:12px 20px;border:1px solid #c2b17e4d;border-radius:26px;background:transparent;color:#ddcea5;font:12px var(--sans);cursor:pointer}.kiln-continue:hover{background:#282e23;border-color:#c2b17e88}
+.kiln-local-share-note{font:10px/1.6 var(--sans);color:#99a68e;margin:9px 0 0;text-align:center}
+.kiln-background-pending{display:block;width:100%;margin-top:16px;border:1px solid #7f967b44;border-radius:8px;background:#1a241d;color:#b6c8a7;padding:12px 15px;text-align:left;font:11px/1.5 var(--sans);cursor:pointer}.kiln-background-pending:hover{border-color:#b6c8a7}
+.kiln-page[data-mint-phase=included] .kiln-mint-status{border-color:#d4b96966;background:radial-gradient(ellipse at 100% 0,#b7973420,transparent 75%),#19201a}
+.kiln-page[data-mint-phase=included] .kiln-mint-status h2{font-size:clamp(30px,3vw,40px);letter-spacing:-.045em;margin-top:12px}.kiln-page[data-mint-phase=included] .kiln-mint-status-kicker{color:#d3bd7e}
+.kiln-page[data-mint-phase=included] .kiln-keep,.kiln-page[data-mint-phase=pending] .kiln-keep{background:#283024;border-color:#91a47a50;color:#d4dfc3;min-height:44px;padding:12px 18px}
+.kiln-page[data-mint-phase=verified] .kiln-continue{order:4}.kiln-page[data-mint-phase=verified] .kiln-background-pending{order:5}
+
+/* 交易反馈与下一步在桌面首屏同时可见，后台详情展开后才增加高度。 */
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-controls{padding-top:18px}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-controls h1{font-size:clamp(34px,3vw,44px);margin-bottom:12px}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-intro{font-size:12px;line-height:1.55;margin-bottom:12px}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-locked-round{padding:9px 0}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-mint-status{padding:16px 20px;margin-bottom:12px}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-mint-status h2{font-size:32px;margin:10px 0 8px}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-mint-status-help{line-height:1.55}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-mint-sync-details{margin-top:12px;padding-top:9px}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-actions{padding-top:8px}
+.kiln-page #kiln-title:focus{outline:none}

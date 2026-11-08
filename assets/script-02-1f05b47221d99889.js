@@ -2264,7 +2264,7 @@ async function kilnCodeSha256(code){
 }
 let kilnReadId=0;
 async function publicKilnRead(method,params=[],{signal,fetcher=globalThis.fetch,timeoutMs=12000}={}){
- if(!['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_call','eth_getCode','eth_getStorageAt','eth_getTransactionReceipt','eth_getBalance'].includes(method))throw Error('Read method not allowed');
+ if(!['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_call','eth_getCode','eth_getStorageAt','eth_getTransactionReceipt','eth_getTransactionByHash','eth_getBalance'].includes(method))throw Error('Read method not allowed');
  if(!Array.isArray(params)||!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>12000)throw Error('Invalid read options');
  const id=++kilnReadId,controller=new AbortController(),abort=()=>controller.abort();if(signal?.aborted)throw new DOMException('Aborted','AbortError');signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
  try{
@@ -2417,6 +2417,10 @@ function nftReceiptIdentity(receipt,account,address,hash){
  if(!kilnAddress(account)||!kilnAddress(address)||!nftTxUrl(hash)||!receipt||receipt.transactionHash?.toLowerCase()!==hash.toLowerCase()||kilnAddress(receipt.from)!==kilnAddress(account)||kilnAddress(receipt.to)!==kilnAddress(address)||!['0x0','0x1'].includes(receipt.status)||!/^0x[0-9a-f]{64}$/i.test(receipt.blockHash)||receipt.blockHash===NFT_ZERO_HASH||!Array.isArray(receipt.logs)||receipt.logs.length>1024)throw Error('Receipt identity mismatch');
  kilnQuantity(receipt.blockNumber);kilnQuantity(receipt.transactionIndex);
 }
+function nftReceiptTransaction(transaction,receipt,reference,expected){
+ // 立即成功必须对应这份冻结设计。仅支持直调EOA，不能把别的作品的hash套给预览。
+ if(!transaction||transaction.hash?.toLowerCase()!==reference.transactionHash||kilnAddress(transaction.from)!==reference.account||kilnAddress(transaction.to)!==reference.contract||transaction.input?.toLowerCase()!==encodeMintCall(expected)||kilnQuantity(transaction.value)!==0n||kilnQuantity(transaction.chainId)!==BigInt(reference.chainId)||transaction.blockHash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(transaction.blockNumber)!==BigInt(receipt.blockNumber)||kilnQuantity(transaction.transactionIndex)!==BigInt(receipt.transactionIndex))throw Error('Mint transaction differs from the frozen preview');
+}
 function nftReceiptLogs(receipt,address){
  const logs=receipt.logs.filter(log=>kilnAddress(log?.address)===kilnAddress(address));
  for(const log of logs){
@@ -2472,7 +2476,7 @@ function nftInterruptible(operation,{signal,timeoutMs}){
 
 async function waitForNftMint(hash,account,record,{request=publicKilnRead,config=NFT_CONFIG,attempts=60,delay=nftDelay,onProgress=()=>{},signal,maxRpcRetries=3,pollIntervalMs=4000,retryDelayMs=1500,requestTimeoutMs=15000}={}){
  if(!nftTxUrl(hash)||!kilnAddress(account)||!nftAvailable(config)||!Number.isInteger(attempts)||attempts<0||attempts>120||typeof delay!=='function'||!Number.isInteger(maxRpcRetries)||maxRpcRetries<0||maxRpcRetries>8||![pollIntervalMs,retryDelayMs].every(value=>Number.isFinite(value)&&value>=0&&value<=30000)||!Number.isFinite(requestTimeoutMs)||requestTimeoutMs<1||requestTimeoutMs>60000)throw Error('Invalid mint reference');
- const reference=nftMintReference(hash,account,config),observed={stage:'submitted',lastObservedStage:'submitted',tokenId:null,confirmedBlocks:0,requiredDepth:12,blockNumber:null,blockHash:null};
+ const reference=nftMintReference(hash,account,config),observed={stage:'submitted',lastObservedStage:'submitted',receiptVerified:false,tokenId:null,confirmedBlocks:0,requiredDepth:12,blockNumber:null,blockHash:null};
  let expected,rpcRetries=0,chainChecked=false,lastProgress='';
  const progress=(state,extra={})=>{const detail={...reference,...observed,...extra},key=state+JSON.stringify(detail);if(key!==lastProgress){lastProgress=key;nftNotify(onProgress,state,detail);}};
  const observe=changes=>{Object.assign(observed,changes);observed.lastObservedStage=observed.stage;};
@@ -2482,6 +2486,7 @@ async function waitForNftMint(hash,account,record,{request=publicKilnRead,config
  };
  const pause=ms=>nftInterruptible(childSignal=>delay(ms,{signal:childSignal}),{signal,timeoutMs:ms+1000});
  const unresolved=(reason,cause)=>{
+  if(reason==='verification_failed'||reason==='invalid_saved_preview')observed.receiptVerified=false;
   const retryInfo=reason==='network_retry_exhausted'?{retryCount:Math.min(Math.max(0,rpcRetries-1),maxRpcRetries),maxRetries:maxRpcRetries}:{};
   progress(reason==='aborted'?'aborted':reason==='verification_failed'||reason==='invalid_saved_preview'?'verification_failed':'pending',{reason,...retryInfo});
   return nftPendingError(reference,cause,reason,{...observed,...retryInfo});
@@ -2495,17 +2500,21 @@ async function waitForNftMint(hash,account,record,{request=publicKilnRead,config
    const receipt=await read('eth_getTransactionReceipt',[reference.transactionHash]);
    if(receipt){
     nftReceiptIdentity(receipt,reference.account,reference.contract,reference.transactionHash);
+    if(observed.blockHash&&observed.blockHash!==receipt.blockHash.toLowerCase()){Object.assign(observed,{stage:'submitted',receiptVerified:false,tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});progress('pending',{reason:'receipt_changed'});}
     const header=await read('eth_getBlockByNumber',[receipt.blockNumber,false]);
     if(header?.hash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(header.number)!==BigInt(receipt.blockNumber))throw Error('Receipt block is no longer canonical');
     if(receipt.status==='0x0'){
      if(receipt.logs.length!==0)throw Error('Reverted receipt contains logs');
-     observe({stage:'reverted',blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase()});progress('reverted');
+     observe({stage:'reverted',receiptVerified:false,tokenId:null,confirmedBlocks:0,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase()});progress('reverted');
      throw Object.assign(Error('Mint transaction reverted'),reference,{...observed,code:'reverted',pending:false});
     }
     const tokenId=mintedTokenFromReceipt(receipt,reference.account,reference.contract,reference.transactionHash);
     nftFiredDesignHash(receipt,tokenId,reference.account,expected.kiln,reference.contract);
+    const transaction=await read('eth_getTransactionByHash',[reference.transactionHash]);
+    if(transaction===null)throw Object.assign(Error('Mint transaction is not yet available'),{code:'nft_rpc_error'});
+    nftReceiptTransaction(transaction,receipt,reference,expected);
     const sameBlock=observed.blockHash===receipt.blockHash.toLowerCase();
-    observe({stage:'included',tokenId,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase(),confirmedBlocks:sameBlock?observed.confirmedBlocks:0});progress('included');
+    observe({stage:'included',receiptVerified:true,tokenId,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase(),confirmedBlocks:sameBlock?observed.confirmedBlocks:0});progress('included');
     const tip=kilnQuantity(await read('eth_blockNumber',[]));if(tip<BigInt(receipt.blockNumber))throw Error('Receipt is beyond the chain tip');
     const depth=tip-BigInt(receipt.blockNumber);observe({confirmedBlocks:Number(depth>12n?12n:depth)});progress('included');
     // 上链立即可见；只有tip-12覆盖交易且完整作品校验通过才宣布verified。
@@ -2529,7 +2538,7 @@ async function waitForNftMint(hash,account,record,{request=publicKilnRead,config
    }else{
     // 先前包含过也可能暂时查不到或被重组移除；当前阶段必须退回submitted。
     // lastObservedStage仅是历史，不能用来恢复已失去证据的token或确认数。
-    Object.assign(observed,{stage:'submitted',tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});
+    Object.assign(observed,{stage:'submitted',receiptVerified:false,tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});
     progress('pending',{reason:observed.lastObservedStage==='submitted'?'awaiting_receipt':'receipt_unavailable'});
    }
    rpcRetries=0;
@@ -2601,7 +2610,7 @@ async function mintNft(record,{provider=globalThis.ethereum,config=NFT_CONFIG,on
 
 
 // 第三步保留独立场景，工作台仍保存原坯。预览与铸造共用同一份冻结记录。
-function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,onBack=()=>{}}={}){
+function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,onBack=()=>{},connectWallet=null,getWalletProvider=()=>globalThis.ethereum,onWalletChange=()=>{}}={}){
  const text={
   kicker:['SQUEEKCHAIN · 仓鼠窑','SQUEEKCHAIN · THE HAMSTER KILN'],title:['你的手艺。\n它的火候。','Your hands.\nHis fire.'],
   intro:['选一个真实结算轮次，让仓鼠的工作量留在釉里。','Choose a settled round. Let his work leave a mark in your glaze.'],
@@ -2619,10 +2628,11 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
   noWallet:['请在装有以太坊钱包的浏览器里打开本页，再点击铸造。','Open this page in a browser with an Ethereum wallet, then choose Mint.'],
   rejected:['你取消了钱包请求，作品还在这里。','Wallet request cancelled. Your piece is still here.'],
   mintError:['交易未完成。确认钱包在 Sepolia、有测试币后再试。','The mint did not complete. Check Sepolia and your test ETH, then retry.'],
-  connecting:['连接钱包…','Connecting your wallet…'],switching:['请切换到 Sepolia','Switch to Sepolia'],checking:['核对合约与作品…','Checking the contract and piece…'],confirming:['请在钱包确认铸造','Confirm the mint in your wallet'],pending:['等待链上确认…','Waiting for confirmation…'],
+  connecting:['连接钱包…','Connecting your wallet…'],switching:['请切换到 Sepolia','Switch to Sepolia'],checking:['核对合约与作品…','Checking the contract and piece…'],confirming:['请在钱包确认铸造','Confirm the mint in your wallet'],pending:['交易已提交','Transaction submitted'],
   pendingHelp:['交易已提交。请核对这笔交易，勿重复铸造。','Your transaction was sent. Check this transaction before trying another mint.'],unknownHelp:['钱包未返回有效交易编号。请先查钱包活动，勿重复铸造；若已提交，可粘贴交易哈希核验。','The wallet returned no transaction reference. Check wallet activity before minting again; paste its transaction hash if it was sent.'],hashLabel:['钱包中的交易哈希','Transaction hash from your wallet'],recheck:['检查交易状态','Check transaction'],transaction:['查看交易 ↗','View transaction ↗'],openNft:['打开这件 NFT ↗','Open your NFT ↗'],
-  mintSent:['交易已发送','Transaction sent'],mintIncluded:['交易已上链','Your mint is onchain'],mintVerifying:['正在校验作品','Checking your piece'],mintRestoring:['正在找回这笔铸造','Finding your mint'],mintRetrying:['连接暂时中断，正在重试','Connection interrupted. Reconnecting…'],mintPaused:['连接尚未恢复，可重新检查这笔交易。','Still unable to reconnect. Recheck this transaction.'],mintCheckFailed:['交易记录需要进一步核对。请查看交易或重新检查，无需再铸造。','This transaction needs another check. Inspect it or recheck; do not mint again.'],mintIncludedHelp:['交易已成功，正在等待后续区块确认。','The transaction succeeded. Waiting for the following blocks.'],mintVerifyHelp:['核对器形、釉色和回合来源。','Matching the shape, glaze and round provenance.'],mintSentHelp:['正在等交易打包。你可以随时查看交易。','Waiting for inclusion. You can inspect the transaction at any time.'],mintConfirmations:['后续区块','FOLLOWING BLOCKS'],mintSteps:['发送 · 上链 · 校验','SENT · ONCHAIN · VERIFIED'],mintSuccessTitle:['这一件，\n已上链。','Your piece.\nOnchain.'],mintSuccessLead:['你的手艺与它的火候，已经一起封存。','Your hands. His fire. Sealed together.'],mintSuccessLabel:['铸造完成','MINT COMPLETE'],mintSuccessHelp:['器形、釉色与轮次来源已保存至合约。','Shape, glaze and round provenance saved in the contract.'],mintShare:['分享这件作品','Share your piece'],mintStamp:['链上封存','SEALED ONCHAIN'],mintChecking:['核验中','CHECKING'],
+  mintSent:['交易已提交','Transaction submitted'],mintIncluded:['铸造完成','Mint complete'],mintVerifying:['正在校验作品','Checking your piece'],mintRestoring:['正在找回这笔铸造','Finding your mint'],mintRetrying:['连接暂时中断，正在重试','Connection interrupted. Reconnecting…'],mintPaused:['连接尚未恢复，可重新检查这笔交易。','Still unable to reconnect. Recheck this transaction.'],mintCheckFailed:['交易记录需要进一步核对。请查看交易或重新检查，无需再铸造。','This transaction needs another check. Inspect it or recheck; do not mint again.'],mintIncludedHelp:['交易已成功。作品核验在后台继续，你可以继续创作。','Your mint succeeded. Artwork verification continues in the background. You can keep creating.'],mintVerifyHelp:['核对器形、釉色和回合来源。','Matching the shape, glaze and round provenance.'],mintSentHelp:['交易正在等待打包。你可以继续创作，进度会保留在这里。','Your transaction is awaiting inclusion. Keep creating; its progress is saved here.'],mintConfirmations:['后续区块','FOLLOWING BLOCKS'],mintSteps:['发送 · 上链 · 校验','SENT · ONCHAIN · VERIFIED'],mintSuccessTitle:['这一件，\n已上链。','Your piece.\nOnchain.'],mintSuccessLead:['你的手艺与它的火候，已经一起封存。','Your hands. His fire. Sealed together.'],mintSuccessLabel:['铸造完成','MINT COMPLETE'],mintSuccessHelp:['器形、釉色与轮次来源已保存至合约。','Shape, glaze and round provenance saved in the contract.'],mintShare:['分享这件作品','Share your piece'],mintStamp:['链上封存','SEALED ONCHAIN'],mintChecking:['核验中','CHECKING'],
   mintCheckTitle:['这笔铸造需要核对','This mint needs a check'],mintIncludedRetryHelp:['交易已成功。连接恢复后会继续核验作品。','The transaction succeeded. Reconnecting to finish verification.'],
+  continue:['继续创作','Keep creating'],localShare:['分享本机作品','Share local piece'],localHelp:['本机作品分享 · NFT 尚未完成核验','Local piece share · NFT verification pending'],background:['之前的铸造正在同步 · 查看','Previous mint syncing · View'],backgroundReady:['之前的 NFT 已就绪 · 查看','Previous NFT ready · View'],syncDetails:['后台核验详情','Background verification'],provisionalStamp:['已铸造 · 核验中','MINTED · SYNCING'],
   mintStatusLabel:['铸造进度','MINT PROGRESS'],
   before:['原釉','Before'],after:['窑变','After'],drag:['拖动旋转 · 方向键微调','Drag to orbit · arrow keys to adjust'],reset:['复位视角','Reset view'],
   rendering:['陶器正在就位…','Preparing your piece…'],webgl:['图形加速不可用，请启用 WebGL 后重试。','Graphics acceleration is unavailable. Enable WebGL and retry.'],
@@ -2631,11 +2641,14 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
  };
  const t=key=>text[key][lang()==='zh'?0:1],q=s=>root.querySelector(s),all=s=>root.querySelectorAll(s),put=(s,value)=>{const el=q(s);if(el&&el.textContent!==String(value))el.textContent=String(value);};
  let base=null,records=[],proof=null,selected=null,state='empty',view=null,visible=false,sceneReady=false,gen=0,raf=0,elapsed=0,lastFrame=0,compare=false,error='',mintState='',mintInfo=null,minted=null,busy=false,disposed=false;
- let mintProgress=null,mintPhase='',mintController=null,resumeTimer=0,resumeAttempts=0,celebrationTimer=0,celebrationPending=false;
+ let mintProgress=null,mintPhase='',mintController=null,resumeTimer=0,resumeAttempts=0,celebrationTimer=0,celebrationPending=null;
+ let sourceVerified=false,tracking=false,mintAttached=false,mintErrorKey='',completedJob=null,jobSerial=0;const celebrated=new Set();
  const pendingKey='wheel-clay-pending-mint-v1';
  const readPending=()=>{try{const p=JSON.parse(localStorage.getItem(pendingKey));return p&&(nftTxUrl(p.hash)||p.unknown===true)&&/^0x[0-9a-f]{40}$/i.test(p.account)&&cleanPieceRecord(p.record)?.kiln?p:null;}catch{return null;}};
  const persistPending=()=>{try{if(mintInfo)localStorage.setItem(pendingKey,JSON.stringify(mintInfo));else localStorage.removeItem(pendingKey);}catch{/* 链接仍保留在当前页面，不隐藏已提交交易。 */}};
- const locked=()=>busy||state==='firing'||!!mintInfo;
+ const locked=()=>busy||state==='firing'||mintAttached&&!!mintInfo;
+ const provisional=()=>mintAttached&&!!mintInfo&&mintProgress?.receiptVerified===true;
+ const notifyWallet=()=>{try{Promise.resolve(onWalletChange()).catch(()=>{});}catch{}};
  const firedRecord=()=>base&&selected?{...base,kiln:selected,...(minted?{nft:minted.nft,maker:minted.maker}:{} )}:null;
  const level=record=>!Number(record.work)?'quiet':Number(record.work)<500?'flow':'glow';
  root.classList.add('kiln-page');root.setAttribute('aria-labelledby','kiln-title');
@@ -2645,9 +2658,9 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
  <div class="kiln-locked-round"><strong></strong><button type="button" class="kiln-change-round" data-kiln-text="changeRound"></button></div><div class="kiln-select-head"><span data-kiln-text="select"></span><button type="button" class="kiln-refresh" data-kiln-text="retry"></button></div><div class="kiln-rounds" role="group"></div><button type="button" class="kiln-earlier" data-kiln-text="earlier"></button><p class="kiln-effect"></p><div class="kiln-proof"><a target="_blank" rel="noopener noreferrer" class="kiln-source" data-kiln-text="source"></a><span class="kiln-confirmed"></span></div>
  <div class="kiln-actions"><button type="button" class="kiln-fire" data-kiln-text="fire"></button><div class="kiln-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><p class="kiln-result" role="status" aria-live="polite"></p>
  <div class="kiln-comparison"><button type="button" data-kiln-compare="before" data-kiln-text="before"></button><button type="button" data-kiln-compare="after" data-kiln-text="after"></button></div>
- <section class="kiln-mint-status" hidden aria-labelledby="kiln-mint-heading"><div class="kiln-mint-status-top"><span class="kiln-mint-status-kicker"></span><span class="kiln-mint-status-network">SEPOLIA</span></div><h2 id="kiln-mint-heading" tabindex="-1" aria-live="polite"></h2><p class="kiln-mint-status-help"></p><div class="kiln-confirmation-meter" role="progressbar" aria-valuemin="0" aria-valuemax="12"><i></i></div><div class="kiln-confirmation-caption"><span data-kiln-text="mintConfirmations"></span><strong></strong></div><div class="kiln-mint-retry" role="status" aria-live="polite"></div></section>
+ <section class="kiln-mint-status" hidden aria-labelledby="kiln-mint-heading"><div class="kiln-mint-status-top"><span class="kiln-mint-status-kicker"></span><span class="kiln-mint-status-network">SEPOLIA</span></div><h2 id="kiln-mint-heading" tabindex="-1" aria-live="polite"></h2><p class="kiln-mint-status-help"></p><details class="kiln-mint-sync-details"><summary data-kiln-text="syncDetails"></summary><div class="kiln-confirmation-meter" role="progressbar" aria-valuemin="0" aria-valuemax="12"><i></i></div><div class="kiln-confirmation-caption"><span data-kiln-text="mintConfirmations"></span><strong></strong></div><div class="kiln-mint-retry" role="status" aria-live="polite"></div></details></section>
  <div class="kiln-finished-actions"><button type="button" class="kiln-keep" data-kiln-text="keep"></button><button type="button" class="kiln-mint" data-kiln-text="mint"></button></div>
- <a class="kiln-nft-link" target="_blank" rel="noopener noreferrer" data-kiln-text="openNft"></a><p class="kiln-mint-fee" data-kiln-text="fee"></p><p class="kiln-feedback" role="status" aria-live="polite"></p><label class="kiln-hash-entry"><span data-kiln-text="hashLabel"></span><input id="kiln-tx-input" type="text" spellcheck="false" autocomplete="off" placeholder="0x…" maxlength="66"></label><div class="kiln-pending-actions"><a class="kiln-tx" target="_blank" rel="noopener noreferrer" data-kiln-text="transaction"></a><button type="button" class="kiln-recheck" data-kiln-text="recheck"></button></div>
+ <p class="kiln-local-share-note" data-kiln-text="localHelp" hidden></p><button type="button" class="kiln-continue" data-kiln-text="continue" hidden></button><button type="button" class="kiln-background-pending" hidden></button><a class="kiln-nft-link" target="_blank" rel="noopener noreferrer" data-kiln-text="openNft"></a><p class="kiln-mint-fee" data-kiln-text="fee"></p><p class="kiln-feedback" role="status" aria-live="polite"></p><label class="kiln-hash-entry"><span data-kiln-text="hashLabel"></span><input id="kiln-tx-input" type="text" spellcheck="false" autocomplete="off" placeholder="0x…" maxlength="66"></label><div class="kiln-pending-actions"><a class="kiln-tx" target="_blank" rel="noopener noreferrer" data-kiln-text="transaction"></a><button type="button" class="kiln-recheck" data-kiln-text="recheck"></button></div>
  <details class="kiln-nft-details"><summary data-kiln-text="nftInfo"></summary><p data-kiln-text="nftBody"></p></details><button type="button" class="kiln-plain" data-kiln-text="keepPlain"></button></div></div></div>`;
  function renderRounds(){
   const container=q('.kiln-rounds');container.replaceChildren();container.setAttribute('aria-label',t('select'));
@@ -2660,94 +2673,140 @@ function createKilnView({root,lang=()=> 'en',createStudio,onKeep=async()=>false,
   }
  }
  function renderMintStatus(){
-  const active=!!minted||!!mintInfo?.hash&&!mintInfo.unknown,done=!!minted,phase=done?'verified':mintPhase||'pending';
+  const attached=mintAttached&&!!mintInfo,active=!!minted||attached&&!!mintInfo.hash&&!mintInfo.unknown,done=!!minted,included=provisional(),phase=done?'verified':included?'included':mintErrorKey==='mintCheckFailed'?'checking':mintPhase||'pending';
   root.dataset.mintPhase=active?phase:'';q('.kiln-mint-status').hidden=!active;
-  q('.kiln-piece-stamp').hidden=!done;if(done)put('.kiln-piece-stamp strong','WCLAY #'+minted.nft.tokenId);
+  q('.kiln-piece-stamp').hidden=!(done||included);
+  if(done||included){put('.kiln-piece-stamp strong','WCLAY #'+(minted?.nft.tokenId||mintProgress.tokenId));put('.kiln-piece-stamp span',t(done?'mintStamp':'provisionalStamp'));}
   if(!active)return;
-  const included=phase==='included'||phase==='verifying',count=Math.min(12,Math.max(0,Number(mintProgress?.confirmedBlocks)||0));
-  put('.kiln-mint-status-kicker',done?t('mintSuccessLabel'):t('mintStatusLabel'));
-  put('.kiln-mint-status-network',!done&&mintProgress?.tokenId?'NFT #'+mintProgress.tokenId:'SEPOLIA');
-  const title=done?'NFT #'+minted.nft.tokenId:error==='mintCheckFailed'?t('mintCheckTitle'):phase==='restoring'?t('mintRestoring'):phase==='verifying'?t('mintVerifying'):phase==='included'?t('mintIncluded'):t('mintSent');
-  put('#kiln-mint-heading',title);
-  put('.kiln-mint-status-help',done?t('mintSuccessHelp'):included&&error==='mintPaused'?t('mintIncludedRetryHelp'):phase==='verifying'?t('mintVerifyHelp'):included?t('mintIncludedHelp'):t('mintSentHelp'));
-  q('.kiln-confirmation-meter').hidden=done||!included;q('.kiln-confirmation-caption').hidden=done||!included;
+  const count=Math.min(12,Math.max(0,Number(mintProgress?.confirmedBlocks)||0));
+  put('.kiln-mint-status-kicker',done||included?t('mintSuccessLabel'):t('mintStatusLabel'));
+  put('.kiln-mint-status-network',included?'NFT #'+mintProgress.tokenId:'SEPOLIA');
+  put('#kiln-mint-heading',done?'NFT #'+minted.nft.tokenId:mintErrorKey==='mintCheckFailed'?t('mintCheckTitle'):included?t('mintIncluded'):phase==='restoring'?t('mintRestoring'):t('mintSent'));
+  put('.kiln-mint-status-help',done?t('mintSuccessHelp'):included?t(mintProgress?.status==='retrying'||mintErrorKey==='mintPaused'?'mintIncludedRetryHelp':'mintIncludedHelp'):mintErrorKey==='mintCheckFailed'?t('mintCheckFailed'):t('mintSentHelp'));
+  q('.kiln-mint-sync-details').hidden=done;q('.kiln-confirmation-meter').hidden=!included;q('.kiln-confirmation-caption').hidden=!included;
   q('.kiln-confirmation-meter').setAttribute('aria-valuenow',String(count));q('.kiln-confirmation-meter').setAttribute('aria-label',t('mintConfirmations'));
   q('.kiln-confirmation-meter').style.setProperty('--mint-confirmed',String(count/12));put('.kiln-confirmation-caption strong',count+' / 12');
-  const retry=mintProgress?.status==='retrying';
-  put('.kiln-mint-retry',done?'':error==='mintCheckFailed'?t(error):error==='mintPaused'?t(error):retry?t('mintRetrying'):!busy&&mintInfo?.hash?t('pendingHelp'):'');
+  put('.kiln-mint-retry',done?'':mintErrorKey?t(mintErrorKey):mintProgress?.status==='retrying'?t('mintRetrying'):mintProgress?.stage==='verifying'?t('mintVerifyHelp'):t('pendingHelp'));
  }
+
  function render(){
-  all('[data-kiln-text]').forEach(el=>{el.textContent=t(el.dataset.kilnText);});root.dataset.kilnState=state;root.dataset.kilnBusy=String(busy);root.dataset.round=selected?.round||'';
+  all('[data-kiln-text]').forEach(el=>{el.textContent=t(el.dataset.kilnText);});root.dataset.kilnState=state;root.dataset.kilnBusy=String(busy);root.dataset.mintTracking=String(tracking);root.dataset.round=selected?.round||'';
   renderRounds();q('.kiln-earlier').hidden=!records.length||!!minted;q('.kiln-earlier').disabled=locked()||state==='loading'||BigInt(records.at(-1)?.round||'1')<=1n;q('.kiln-back').disabled=busy||state==='firing';q('.kiln-refresh').disabled=locked()||state==='loading';q('.kiln-refresh').hidden=!!minted;
   q('#kiln-canvas').setAttribute('aria-label',lang()==='zh'?'窑变陶器预览，可拖动旋转':'Fired pottery preview. Drag to orbit');
   put('.kiln-scene-status',!view?t('webgl'):sceneReady?'':t('rendering'));q('.kiln-scene-status').hidden=!!view&&sceneReady;
   put('.kiln-effect',state==='loading'?t('loading'):state==='error'?t('failed'):selected?t(Number(selected.work)?'effectFlow':'effectQuiet'):t('recordOnly'));
   q('.kiln-proof').hidden=!selected;q('.kiln-source').href=selected?kilnSourceUrl(selected):'#';put('.kiln-confirmed',proof?t('block')+' '+Number(proof.blockNumber).toLocaleString('en-US'):'');
-  const fired=state==='fired';q('.kiln-locked-round').hidden=!fired;put('.kiln-locked-round strong',selected?t('round')+' '+selected.round+' · '+selected.work+' '+t('work'):'');q('.kiln-change-round').disabled=locked()||!!minted;q('.kiln-change-round').hidden=!!minted||!!mintInfo;q('.kiln-fire').hidden=fired||!!mintInfo;q('.kiln-fire').disabled=state!=='ready'||!sceneReady||!selected||busy;
+  const fired=state==='fired';q('.kiln-locked-round').hidden=!fired;put('.kiln-locked-round strong',selected?t('round')+' '+selected.round+' · '+selected.work+' '+t('work'):'');q('.kiln-change-round').disabled=locked()||!!minted;q('.kiln-change-round').hidden=!!minted||mintAttached&&!!mintInfo;q('.kiln-fire').hidden=fired||mintAttached&&!!mintInfo;q('.kiln-fire').disabled=state!=='ready'||!sceneReady||!selected||busy;
   q('.kiln-fire').textContent=t(state==='firing'?'firing':'fire');q('.kiln-progress').hidden=state!=='firing';q('.kiln-result').hidden=!fired;put('.kiln-result',t(minted?'minted':'fired')+(minted?' #'+minted.nft.tokenId:''));
   q('.kiln-comparison').hidden=!fired;all('[data-kiln-compare]').forEach(button=>{button.disabled=busy;button.setAttribute('aria-pressed',String((button.dataset.kilnCompare==='before')===compare));});
-  q('.kiln-finished-actions').hidden=!fired||!!mintInfo;q('.kiln-keep').disabled=busy;q('.kiln-mint').hidden=!!minted;q('.kiln-mint').disabled=busy||!!mintInfo||!nftAvailable();
+  q('.kiln-finished-actions').hidden=!fired;q('.kiln-keep').disabled=busy;q('.kiln-mint').hidden=!!minted||!!mintInfo;q('.kiln-mint').disabled=busy||!!mintInfo||!nftAvailable();
   q('.kiln-mint-fee').hidden=!fired||!!minted||!!mintInfo;put('.kiln-mint-fee',nftAvailable()?t('fee'):t('unavailable'));q('.kiln-nft-details').hidden=!fired||!!mintInfo;
+  q('.kiln-local-share-note').hidden=!(fired&&mintAttached&&mintInfo);if(fired&&mintAttached&&mintInfo)put('.kiln-keep',t('localShare'));
+  q('.kiln-continue').hidden=!(minted||mintAttached&&mintInfo);q('.kiln-continue').disabled=busy||state==='firing';
+  q('.kiln-background-pending').hidden=mintAttached||!mintInfo&&!completedJob||!!minted;q('.kiln-background-pending').disabled=busy||state==='firing';put('.kiln-background-pending',t(mintInfo?'background':'backgroundReady'));
   q('.kiln-nft-link').hidden=!minted;if(minted){q('.kiln-nft-link').href=nftPieceUrl(minted.nft.tokenId,lang());put('#kiln-title',t('mintSuccessTitle'));put('.kiln-intro',t('mintSuccessLead'));put('.kiln-keep',t('mintShare'));}
-  q('.kiln-hash-entry').hidden=!(mintInfo?.unknown||mintInfo?.manual);q('.kiln-tx').hidden=!mintInfo?.hash;q('.kiln-pending-actions').hidden=!mintInfo;q('.kiln-recheck').disabled=busy;if(mintInfo)q('.kiln-tx').href=nftTxUrl(mintInfo.hash);
-  put('.kiln-feedback',mintInfo&&!mintInfo.unknown?'':mintState?t(mintState):error?t(error):mintInfo?t('unknownHelp'):'');
-  q('.kiln-plain').hidden=state==='fired'||state==='firing'||!!mintInfo;q('.kiln-plain').disabled=busy||!base||!sceneReady;
+  q('.kiln-hash-entry').hidden=!(mintAttached&&(mintInfo?.unknown||mintInfo?.manual));q('.kiln-tx').hidden=!mintInfo?.hash;q('.kiln-pending-actions').hidden=!mintInfo||!mintAttached;q('.kiln-recheck').disabled=busy||tracking;if(mintInfo)q('.kiln-tx').href=nftTxUrl(mintInfo.hash);
+  put('.kiln-feedback',mintState==='saving'?t('saving'):mintAttached&&mintInfo&&!mintInfo.unknown?'':mintState?t(mintState):error?t(error):mintAttached&&mintInfo?t('unknownHelp'):'');
+  q('.kiln-plain').hidden=state==='fired'||state==='firing'||mintAttached&&!!mintInfo;q('.kiln-plain').disabled=busy||!base||!sceneReady;
   renderMintStatus();
  }
  function ensureScene(){if(view||disposed)return;try{view=createStudio(q('#kiln-canvas'),{background:'#101114',sealUrl:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHN0eWxlPSItLXNxay1sb2dvLWdvbGQ6I2I4NGQwMCIgYXJpYS1oaWRkZW49InRydWUiIGNsYXNzPSJoLTggdy1hdXRvIHNocmluay0wIHNtOmhpZGRlbiIgZGF0YS1oYW1zdGVyPSJhd2FrZSIgZGF0YS1tYXJrPSJzcXVhcmUiIGhlaWdodD0iMjM4IiB2aWV3Qm94PSI3MyA3MyAzNTAgMjM4IiB3aWR0aD0iMzUwIj48cGF0aCBkPSJNMTQ1IDg4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTYxIDg4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTc3IDg4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzA1IDg4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzIxIDg4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDg4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTI5IDEwNGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE0NSAxMDRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNjEgMTA0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTc3IDEwNGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE5MyAxMDRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yODkgMTA0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzA1IDEwNGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMyMSAxMDRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMzcgMTA0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzUzIDEwNGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTEyOSAxMjBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNDUgMTIwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTYxIDEyMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE3NyAxMjBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xOTMgMTIwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjA5IDEyMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTIyNSAxMjBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNDEgMTIwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjU3IDEyMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI3MyAxMjBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yODkgMTIwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzA1IDEyMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMyMSAxMjBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMzcgMTIwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzUzIDEyMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTExMyAxMzZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMjkgMTM2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTQ1IDEzNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE2MSAxMzZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNzcgMTM2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTkzIDEzNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTIwOSAxMzZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMjUgMTM2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjQxIDEzNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI1NyAxMzZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNzMgMTM2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjg5IDEzNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMwNSAxMzZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMjEgMTM2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDEzNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM1MyAxMzZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNjkgMTM2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTEzIDE1MmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTEyOSAxNTJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNDUgMTUyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTYxIDE1MmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE5MyAxNTJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMDkgMTUyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjI1IDE1MmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI0MSAxNTJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNTcgMTUyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjczIDE1MmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI4OSAxNTJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMjEgMTUyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDE1MmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM1MyAxNTJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNjkgMTUyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTEzIDE2OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTEyOSAxNjhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNDUgMTY4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjA5IDE2OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTIyNSAxNjhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNDEgMTY4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjU3IDE2OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI3MyAxNjhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMzcgMTY4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzUzIDE2OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM2OSAxNjhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMTMgMTg0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTI5IDE4NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE0NSAxODRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMDkgMTg0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjI1IDE4NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI0MSAxODRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNTcgMTg0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjczIDE4NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMzNyAxODRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNTMgMTg0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzY5IDE4NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTk3IDIwMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTExMyAyMDBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMjkgMjAwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTQ1IDIwMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTIwOSAyMDBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMjUgMjAwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjQxIDIwMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI1NyAyMDBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNzMgMjAwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDIwMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM1MyAyMDBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNjkgMjAwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzg1IDIwMGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTgxIDIxNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTk3IDIxNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTExMyAyMTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMjkgMjE2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTQ1IDIxNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTIwOSAyMTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMjUgMjE2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjQxIDIxNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI1NyAyMTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNzMgMjE2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDIxNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM1MyAyMTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNjkgMjE2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzg1IDIxNmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTQwMSAyMTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek04MSAyMzJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek05NyAyMzJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMTMgMjMyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTI5IDIzMmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE0NSAyMzJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMDkgMjMyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjI1IDIzMmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI0MSAyMzJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNTcgMjMyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjczIDIzMmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMzNyAyMzJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNTMgMjMyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzY5IDIzMmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM4NSAyMzJhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek00MDEgMjMyYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNODEgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNOTcgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTEzIDI0OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTEyOSAyNDhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNDUgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTYxIDI0OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE5MyAyNDhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMDkgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjI1IDI0OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI0MSAyNDhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNTcgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjczIDI0OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI4OSAyNDhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMjEgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDI0OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM1MyAyNDhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNjkgMjQ4YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzg1IDI0OGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTQwMSAyNDhhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek05NyAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMTMgMjY0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTI5IDI2NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE0NSAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNjEgMjY0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTc3IDI2NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE5MyAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMDkgMjY0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjI1IDI2NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI0MSAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNTcgMjY0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjczIDI2NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI4OSAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMDUgMjY0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzIxIDI2NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMzNyAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zNTMgMjY0YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzY5IDI2NGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM4NSAyNjRhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xMjkgMjgwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTQ1IDI4MGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE2MSAyODBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNzcgMjgwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTkzIDI4MGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTIwOSAyODBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMjUgMjgwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjQxIDI4MGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI1NyAyODBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNzMgMjgwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjg5IDI4MGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTMwNSAyODBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMjEgMjgwYTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzM3IDI4MGE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTM1MyAyODBhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0xNjEgMjk2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMTc3IDI5NmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTE5MyAyOTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yMDkgMjk2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjI1IDI5NmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI0MSAyOTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0yNTcgMjk2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMjczIDI5NmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6TTI4OSAyOTZhNyA3IDAgMSAwIDE0IDBhNyA3IDAgMSAwIC0xNCAwek0zMDUgMjk2YTcgNyAwIDEgMCAxNCAwYTcgNyAwIDEgMCAtMTQgMHpNMzIxIDI5NmE3IDcgMCAxIDAgMTQgMGE3IDcgMCAxIDAgLTE0IDB6IiBmaWxsPSJ2YXIoLS1zcWstbG9nby1nb2xkKSI+PC9wYXRoPjwvc3ZnPg==',onReady(){sceneReady=true;render();}});view.setPhase('glaze');view.setRpm(0);view.setVisible(visible);}catch{view=null;}render();}
  function updateScene(){ensureScene();if(!view||!base)return;view.setProfile(base.profile,base.form);view.setGlaze(base.glaze);view.setSurface(base.surface);view.setFinish(base.finish);view.setKiln(selected);view.setKilnReveal(state==='fired'?1:0);view.resetView();}
- async function load(round=null){const serial=++gen;state='loading';error='';selected=null;proof=null;records=[];view?.setKiln(null);render();try{const result=await loadKilnRounds({round,includeRecentActive:round===null});if(disposed||serial!==gen)return;proof=result;records=result.records;selected=records.find(record=>Number(record.work)>0)||records[0];state='ready';view?.setKiln(selected);view?.setKilnReveal(0);}catch{if(disposed||serial!==gen)return;state='error';}render();}
+ async function load(round=null){const serial=++gen;sourceVerified=false;state='loading';error='';selected=null;proof=null;records=[];view?.setKiln(null);render();try{const result=await loadKilnRounds({round,includeRecentActive:round===null});if(disposed||serial!==gen)return;proof=result;sourceVerified=true;records=result.records;selected=records.find(record=>Number(record.work)>0)||records[0];state='ready';view?.setKiln(selected);view?.setKilnReveal(0);}catch{if(disposed||serial!==gen)return;state='error';}render();}
  function tick(now){raf=0;if(disposed||!visible||state!=='firing'){lastFrame=0;return;}if(lastFrame)elapsed+=Math.min(now-lastFrame,50);lastFrame=now;const p=Math.min(1,elapsed/2400),ease=p*p*(3-2*p);view?.setKilnReveal(ease);root.style.setProperty('--kiln-progress',String(p));q('.kiln-progress').setAttribute('aria-valuenow',String(Math.round(p*100)));if(p===1){state='fired';render();}else raf=requestAnimationFrame(tick);}
  function fire(){if(state!=='ready'||!selected||!sceneReady||locked())return;state='firing';compare=false;elapsed=0;lastFrame=0;view.setKiln(selected);view.setKilnReveal(0);render();if(matchMedia('(prefers-reduced-motion: reduce)').matches){view.setKilnReveal(1);state='fired';render();}else raf=requestAnimationFrame(tick);}
- async function keep(plain=false){if(busy||!base||!view||!sceneReady)return;busy=true;error='';mintState='saving';render();try{const record=plain?base:firedRecord();view.setKiln(plain?null:selected);view.setKilnReveal(1);const image=view.capture(1200,1100);const ok=await onKeep(record,image,{verifiedKiln:!plain,verifiedNft:!!minted});if(!ok)error='saveError';}catch{error='saveError';}finally{busy=false;mintState='';if(compare)view?.setKilnReveal(0);render();}}
+ async function keep(plain=false){if(busy||!base||!view||!sceneReady)return;busy=true;error='';mintState='saving';render();try{const record=plain?base:firedRecord();view.setKiln(plain?null:selected);view.setKilnReveal(1);const image=view.capture(1200,1100);const ok=await onKeep(record,image,{verifiedKiln:!plain&&sourceVerified,verifiedNft:!!minted});if(!ok)error='saveError';}catch{error='saveError';}finally{busy=false;mintState='';if(compare)view?.setKilnReveal(0);render();}}
+ function clearCelebration(){clearTimeout(celebrationTimer);celebrationPending=null;root.classList.remove('kiln-mint-celebrate');}
  function onMintProgress(next,detail){
-  if(disposed)return;mintProgress={...detail,status:next};
-  mintPhase=next==='verified'?'verifying':['retrying','pending'].includes(next)?(detail.stage==='included'?'included':detail.stage==='verifying'?'verifying':'pending'):['included','verifying'].includes(next)?next:mintPhase;
-  if(mintInfo){mintInfo={...mintInfo,progress:{stage:detail.stage,confirmedBlocks:detail.confirmedBlocks,tokenId:detail.tokenId}};persistPending();}
-  render();
+  if(disposed||!mintInfo)return;
+  // 重新启动只读tracker的初始pending不撤销刚才的receipt事实；实际null/坏证明会明确撤销。
+  const unobserved=['pending','retrying','aborted'].includes(next)&&detail.stage==='submitted'&&!['receipt_unavailable','awaiting_receipt','receipt_changed','verification_failed','invalid_saved_preview'].includes(detail.reason);
+  if(unobserved&&mintProgress?.receiptVerified)mintProgress={...mintProgress,status:next,retryCount:detail.retryCount,maxRetries:detail.maxRetries,reason:detail.reason};
+  else mintProgress={...detail,status:next};
+  if(['verification_failed','reverted'].includes(next)){mintProgress={...detail,status:next,receiptVerified:false};mintErrorKey=next==='verification_failed'?'mintCheckFailed':'';clearCelebration();}
+  else if(detail.reason==='receipt_unavailable'||detail.reason==='awaiting_receipt'||detail.reason==='receipt_changed'){mintProgress={...detail,status:next,receiptVerified:false};clearCelebration();}
+  else if(['included','verifying','verified'].includes(next))mintErrorKey='';
+  mintPhase=mintProgress?.receiptVerified?'included':next==='verification_failed'?'checking':'pending';
+  mintInfo={...mintInfo,progress:{stage:mintProgress.stage,confirmedBlocks:mintProgress.confirmedBlocks,tokenId:mintProgress.tokenId,receiptVerified:mintProgress.receiptVerified}};persistPending();
+  if(provisional())queueCelebrate(mintInfo.hash);render();
  }
  function scheduleResume(delay=500){
   clearTimeout(resumeTimer);resumeTimer=0;
-  if(disposed||!visible||busy||!mintInfo?.hash||mintInfo.unknown||mintInfo.manual||error==='mintCheckFailed'||resumeAttempts>=5)return;
+  if(disposed||!visible||busy||tracking||!mintInfo?.hash||mintInfo.unknown||mintInfo.manual||mintErrorKey==='mintCheckFailed'||resumeAttempts>=5)return;
   resumeTimer=setTimeout(()=>{resumeTimer=0;recheck(true);},delay);
  }
  function mintedDone(actual){
-  if(disposed)return;minted=actual;selected=actual.kiln;records=[selected];base={...base,...actual,profile:actual.profile.slice()};delete base.kiln;delete base.nft;mintInfo=null;persistPending();mintState='';error='';state='fired';mintPhase='verified';compare=false;resumeAttempts=0;clearTimeout(resumeTimer);resumeTimer=0;
-  view?.setKiln(actual.kiln);view?.setKilnReveal(1);celebrationPending=true;celebrate();
+  if(disposed)return;const attached=mintAttached;completedJob=actual;mintInfo=null;persistPending();mintErrorKey='';resumeAttempts=0;clearTimeout(resumeTimer);resumeTimer=0;
+  if(!attached){render();return;}
+  sourceVerified=true;minted=actual;selected=actual.kiln;records=[selected];base={...base,...actual,profile:actual.profile.slice()};delete base.kiln;delete base.nft;mintAttached=false;error='';state='fired';mintPhase='verified';compare=false;
+  view?.setKiln(actual.kiln);view?.setKilnReveal(1);queueCelebrate(actual.nft.transactionHash);
  }
+ function queueCelebrate(hash){if(hash&&!celebrated.has(hash)){celebrationPending=hash;celebrate();}}
  function celebrate(){
-  if(!visible||!celebrationPending||disposed)return;celebrationPending=false;root.classList.add('kiln-mint-celebrate');
+  if(!visible||!celebrationPending||disposed||!(minted||provisional()))return;
+  const hash=minted?.nft.transactionHash||mintInfo?.hash;if(hash!==celebrationPending||celebrated.has(hash))return;
+  celebrationPending=null;celebrated.add(hash);if(mintInfo){mintInfo={...mintInfo,celebrated:true};persistPending();}root.classList.add('kiln-mint-celebrate');
   clearTimeout(celebrationTimer);celebrationTimer=setTimeout(()=>root.classList.remove('kiln-mint-celebrate'),2600);
  }
  function confirmationError(err){
-  if(err?.code==='reverted'){mintInfo=null;mintProgress=null;mintPhase='';persistPending();error='mintError';}
-  else if(mintInfo){error=err?.reason==='verification_failed'||err?.reason==='invalid_saved_preview'?'mintCheckFailed':'mintPaused';}
+  if(err?.code==='reverted'){const attached=mintAttached;mintInfo=null;mintProgress=null;mintPhase='';mintAttached=false;persistPending();clearCelebration();if(attached&&state==='fired')error='mintError';}
+  else if(mintInfo){mintErrorKey=err?.reason==='verification_failed'||err?.reason==='invalid_saved_preview'?'mintCheckFailed':'mintPaused';if(mintErrorKey==='mintCheckFailed'){mintProgress={...mintProgress,receiptVerified:false};mintPhase='checking';clearCelebration();}}
  }
  async function mint(){
-  if(locked()||state!=='fired'||!nftAvailable())return;clearTimeout(resumeTimer);busy=true;error='';mintProgress=null;mintPhase='';resumeAttempts=0;mintController=new AbortController();render();
-  try{const result=await mintNft(firedRecord(),{signal:mintController.signal,onProgress:onMintProgress,onState(next,info){if(disposed)return;mintState=next;if(next==='pending'){mintInfo={...info,record:firedRecord()};mintPhase='pending';persistPending();}render();}});mintedDone(result);}
-  catch(err){if(disposed)return;if(err?.code==='submission_unknown'){mintInfo={unknown:true,account:err.account,record:firedRecord()};persistPending();error='unknownHelp';}else if(mintInfo)confirmationError(err);else error=err?.code==='source_mismatch'?'mismatch':err?.code===4001?'rejected':err?.code==='no_wallet'?'noWallet':'mintError';}
-  finally{busy=false;mintController=null;mintState='';if(!disposed){render();if(minted&&visible)q('#kiln-mint-heading').focus({preventScroll:true});else scheduleResume(15000);}}
+  if(locked()||mintInfo||minted||tracking||state!=='fired'||!nftAvailable())return;
+  clearTimeout(resumeTimer);busy=true;error='';mintErrorKey='';mintProgress=null;mintPhase='';resumeAttempts=0;mintController=new AbortController();const serial=++jobSerial,record={...firedRecord(),profile:base.profile.slice()},controller=mintController;let released=false;render();
+  try{
+   const provider=connectWallet?await connectWallet():getWalletProvider();notifyWallet();if(disposed||serial!==jobSerial)return;
+   const result=await mintNft(record,{provider,signal:controller.signal,onProgress:(next,detail)=>{if(serial===jobSerial)onMintProgress(next,detail);},onState(next,info){
+    if(disposed||serial!==jobSerial)return;mintState=next;
+    if(next==='pending'){mintInfo={...info,record};mintAttached=true;mintPhase='pending';released=true;busy=false;mintState='';tracking=true;persistPending();}
+    render();
+   }});if(serial===jobSerial)mintedDone(result);
+  }catch(err){
+   if(disposed||serial!==jobSerial)return;
+   if(err?.code==='submission_unknown'){mintInfo={unknown:true,account:err.account,record};mintAttached=true;persistPending();error='unknownHelp';}
+   else if(mintInfo)confirmationError(err);else error=err?.code==='source_mismatch'?'mismatch':err?.code===4001?'rejected':err?.code==='no_wallet'?'noWallet':'mintError';
+  }finally{notifyWallet();if(serial===jobSerial){if(!released){busy=false;mintState='';}tracking=false;mintController=null;if(!disposed){render();scheduleResume(15000);}}}
  }
  async function recheck(automatic=false){
-  if(!mintInfo||busy||disposed)return;clearTimeout(resumeTimer);resumeTimer=0;
-  if(mintInfo.unknown||mintInfo.manual){const hash=q('#kiln-tx-input').value.trim();if(!nftTxUrl(hash)){error='unknownHelp';render();return;}mintInfo={...mintInfo,unknown:false,manual:true,hash};persistPending();}
+  if(!mintInfo||busy||tracking||disposed)return;clearTimeout(resumeTimer);resumeTimer=0;
+  if(mintInfo.unknown||mintInfo.manual){
+   const hash=q('#kiln-tx-input').value.trim().toLowerCase();if(!nftTxUrl(hash)){error='unknownHelp';render();return;}
+   // receipt事实只属于原hash；换交易后不能把旧成功、token或庆祝状态带入新tracker。
+   if(hash!==(mintInfo.hash||'').toLowerCase()){
+    const {progress:oldProgress,celebrated:oldCelebrated,...reference}=mintInfo;mintInfo=reference;
+    mintProgress=null;mintPhase='pending';mintErrorKey='';clearCelebration();
+   }
+   mintInfo={...mintInfo,unknown:false,manual:true,hash,transactionHash:hash};persistPending();
+  }
   if(automatic)resumeAttempts++;else resumeAttempts=0;
-  busy=true;error='';mintState='pending';if(!mintProgress)mintPhase='restoring';mintController=new AbortController();render();
-  try{mintedDone(await waitForNftMint(mintInfo.hash,mintInfo.account,mintInfo.record,{attempts:60,onProgress:onMintProgress,signal:mintController.signal}));}
-  catch(err){if(!disposed)confirmationError(err);}
-  finally{busy=false;mintController=null;mintState='';if(!disposed){render();if(minted&&visible)q('#kiln-mint-heading').focus({preventScroll:true});else scheduleResume(15000);}}
+  tracking=true;mintErrorKey='';if(!mintProgress)mintPhase='restoring';mintController=new AbortController();const serial=++jobSerial,job=mintInfo,controller=mintController;render();
+  try{const actual=await waitForNftMint(job.hash,job.account,job.record,{attempts:60,onProgress:(next,detail)=>{if(serial===jobSerial)onMintProgress(next,detail);},signal:controller.signal});if(serial===jobSerial)mintedDone(actual);}
+  catch(err){if(!disposed&&serial===jobSerial)confirmationError(err);}
+  finally{if(serial===jobSerial){tracking=false;mintController=null;if(!disposed){render();scheduleResume(15000);}}}
  }
- function online(){if(mintInfo&&visible&&!busy&&error!=='mintCheckFailed'){resumeAttempts=0;scheduleResume(100);}}
+ function online(){if(mintInfo&&!busy&&!tracking&&mintErrorKey!=='mintCheckFailed'){resumeAttempts=0;scheduleResume(100);}}
+ function openPiece(record,actual=null){
+  if(busy||state==='firing'||disposed)return false;
+  if(!mintInfo){const saved=readPending();if(saved){mintInfo=saved;mintProgress=null;mintPhase='restoring';mintErrorKey='';if(saved.celebrated)celebrated.add(saved.hash);}}
+  let clean=cleanPieceRecord(record);if(!clean)return false;
+  mintAttached=!actual&&!!mintInfo&&encodePieceDesign(clean)===encodePieceDesign(mintInfo.record)&&(!clean.kiln||JSON.stringify(clean.kiln)===JSON.stringify(cleanPieceRecord(mintInfo.record)?.kiln));
+  const candidate=mintAttached?mintInfo.record:record;clean=cleanPieceRecord(candidate);
+  gen++;cancelAnimationFrame(raf);clearTimeout(resumeTimer);clearCelebration();raf=0;base={...candidate,...clean,profile:clean.profile.slice()};delete base.kiln;delete base.nft;minted=actual;sourceVerified=!!actual;error='';mintState='';compare=false;selected=actual?.kiln||(mintAttached?mintInfo.record.kiln:null);records=selected?[selected]:[];state=selected?'fired':'loading';proof=null;
+  q('#kiln-tx-input').value=mintAttached?mintInfo.hash||'':'';q('.kiln-mint-sync-details').open=false;updateScene();render();
+  if(actual||provisional())queueCelebrate(actual?.nft.transactionHash||mintInfo.hash);if(!selected)load();scheduleResume();return true;
+ }
  window.addEventListener('online',online);
+ q('.kiln-continue').addEventListener('click',()=>{if(!busy&&state!=='firing')onBack();});
+ q('.kiln-background-pending').addEventListener('click',()=>{if(mintInfo)openPiece(mintInfo.record);else if(completedJob)openPiece(completedJob,completedJob);});
  q('.kiln-earlier').addEventListener('click',()=>{if(!locked()&&records.length&&BigInt(records.at(-1).round)>1n)load((BigInt(records.at(-1).round)-1n).toString());});
  q('.kiln-change-round').addEventListener('click',()=>{if(locked()||minted)return;state='ready';error='';compare=false;view?.setKilnReveal(0);render();});
  q('.kiln-back').addEventListener('click',()=>{if(!busy&&state!=='firing')onBack();});q('.kiln-refresh').addEventListener('click',()=>{if(!locked())load();});q('.kiln-fire').addEventListener('click',fire);q('.kiln-keep').addEventListener('click',()=>keep());q('.kiln-plain').addEventListener('click',()=>keep(true));q('.kiln-mint').addEventListener('click',mint);q('.kiln-recheck').addEventListener('click',()=>recheck(false));q('.kiln-reset').addEventListener('click',()=>view?.resetView());
  all('[data-kiln-compare]').forEach(button=>button.addEventListener('click',()=>{if(busy||state!=='fired')return;compare=button.dataset.kilnCompare==='before';view?.setKilnReveal(compare?0:1);render();}));
  q('#kiln-canvas').addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();view?.orbitView(e.key==='ArrowLeft'?-.09:e.key==='ArrowRight'?.09:0,e.key==='ArrowUp'?.05:e.key==='ArrowDown'?-.05:0);});
  return {
-  open(record){if(busy)return false;const pending=readPending(),candidate=pending?.record||record,clean=cleanPieceRecord(candidate);if(!clean)return false;gen++;cancelAnimationFrame(raf);clearTimeout(resumeTimer);clearTimeout(celebrationTimer);root.classList.remove('kiln-mint-celebrate');celebrationPending=false;raf=0;base={...candidate,...clean};base.profile=clean.profile.slice();delete base.kiln;delete base.nft;minted=null;mintInfo=pending;mintProgress=null;mintPhase=pending?'restoring':'';resumeAttempts=0;q('#kiln-tx-input').value=pending?.hash||'';mintState='';error='';compare=false;state=pending?'fired':'loading';selected=pending?.record.kiln||null;records=selected?[selected]:[];proof=null;updateScene();render();if(!pending)load();else scheduleResume();return true;},
-  resume(){const pending=readPending();return pending?this.open(pending.record):false;},
+  open(record){return openPiece(record);},
+  resume(){const pending=mintInfo||readPending();return pending?openPiece(pending.record):false;},
   get hasPiece(){return !!base;},get isBusy(){return busy||state==='firing';},
   render,setVisible(value){const changed=visible!==!!value;visible=!!value;view?.setVisible(visible);if(!visible){cancelAnimationFrame(raf);clearTimeout(resumeTimer);resumeTimer=0;raf=0;lastFrame=0;}else{if(state==='firing'&&!raf)raf=requestAnimationFrame(tick);if(changed)scheduleResume();celebrate();}},
   dispose(){disposed=true;gen++;cancelAnimationFrame(raf);clearTimeout(resumeTimer);clearTimeout(celebrationTimer);mintController?.abort();window.removeEventListener('online',online);view?.dispose();}
@@ -2887,6 +2946,146 @@ function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
 
 
 
+// 连接入口只管理账户授权与网络，不签消息、不发送交易。铸造仍由独立按钮触发。
+const walletDetachedKey='wheel-clay-wallet-detached';
+const walletCancelled=()=>Object.assign(Error('Wallet connection cancelled'),{code:4001});
+const walletChain=value=>typeof value==='string'&&/^0x[0-9a-f]+$/i.test(value)?'0x'+BigInt(value).toString(16):null;
+const walletName=value=>typeof value==='string'?value.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,48):'Browser wallet';
+const walletShort=address=>address?address.slice(0,6)+'…'+address.slice(-4):'';
+
+function createWalletSession({scope=globalThis,storage,requestTimeoutMs=30000,restore=true}={}){
+ let store=storage;try{if(store===undefined)store=scope.localStorage;}catch{}
+ const announced=new Map(),subscribers=new Set(),accountRequests=new WeakMap();
+ let selected=null,account=null,chainId=null,busy='',error='',epoch=0,accountVersion=0,chainVersion=0,refreshVersion=0,disposed=false,flight=null,detachListeners=()=>{};
+ let detached=false;try{detached=store?.getItem(walletDetachedKey)==='true';}catch{}
+ const persist=value=>{detached=value;try{store?.setItem(walletDetachedKey,String(value));}catch{}};
+ const snapshot=()=>({account,chainId,busy,error,connected:!!account,correctChain:chainId===KILN_NETWORK.hexChainId,providerId:selected?.id??null,providerName:selected?.name??'',providers:providers().map(({id,name})=>({id,name})),detached});
+ const emit=()=>{if(!disposed)for(const fn of subscribers)try{fn(snapshot());}catch{}};
+ function providers(){
+  if(announced.size)return [...announced.values()];
+  let injected;try{injected=scope.ethereum;}catch{}
+  const list=Array.isArray(injected?.providers)?injected.providers:[injected];
+  return list.filter((provider,i)=>provider?.request&&list.indexOf(provider)===i).slice(0,16).map((provider,i)=>({id:'injected-'+i,name:list.length>1?'Browser wallet '+(i+1):'Browser wallet',provider}));
+ }
+ function announce(event){
+  const detail=event?.detail,info=detail?.info;
+  if(!info||typeof info.uuid!=='string'||!/^[0-9a-f-]{36}$/i.test(info.uuid)||typeof info.name!=='string'||typeof detail.provider?.request!=='function'||announced.size>=16||announced.has(info.uuid))return;
+  if([...announced.values()].some(item=>item.provider===detail.provider))return;
+  announced.set(info.uuid,{id:info.uuid,name:walletName(info.name)||'Browser wallet',provider:detail.provider});emit();
+ }
+ function discover(){scope.dispatchEvent?.(new Event('eip6963:requestProvider'));emit();return snapshot().providers;}
+ function fail(errorValue){const code=Number(errorValue?.code);return code===4001?'rejected':code===4100?'unauthorized':code===4900?'disconnected':code===4901?'network':code===4902?'add_network':code===4200?'unsupported':code===-32002?'pending':errorValue?.code==='wallet_timeout'?'timeout':'unavailable';}
+ function deadline(operation){
+  let timer;return Promise.race([operation,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(Error('Wallet request timed out'),{code:'wallet_timeout'})),requestTimeoutMs);})]).finally(()=>clearTimeout(timer));
+ }
+ function activate(next){
+  if(selected?.provider===next.provider){selected=next;return;}
+  epoch++;detachListeners();selected=next;account=null;chainId=null;error='';accountVersion++;chainVersion++;
+  const provider=next.provider,live=()=>!disposed&&selected?.provider===provider;
+  const accountsChanged=accounts=>{if(!live())return;accountVersion++;account=kilnAddress(accounts?.[0]);error='';if(!account){epoch++;busy='';flight=null;}emit();};
+  const chainChanged=value=>{if(!live())return;chainVersion++;chainId=walletChain(value);error=chainId?'':'network';emit();};
+  const disconnected=()=>{if(!live())return;epoch++;accountVersion++;chainVersion++;account=null;chainId=null;busy='';flight=null;error='disconnected';emit();};
+  const connected=()=>{if(live())void refresh();};
+  const events={accountsChanged,chainChanged,disconnect:disconnected,connect:connected};
+  for(const [event,handler]of Object.entries(events))provider.on?.(event,handler);
+  detachListeners=()=>{for(const [event,handler]of Object.entries(events))provider.removeListener?.(event,handler);};
+ }
+ async function refresh(){
+  if(disposed||detached||!selected)return snapshot();
+  const current=epoch,revision=++refreshVersion,provider=selected.provider,a=accountVersion,c=chainVersion;
+  try{
+   const [accounts,chain]=await deadline(Promise.all([provider.request({method:'eth_accounts'}),provider.request({method:'eth_chainId'})]));
+   if(disposed||current!==epoch||revision!==refreshVersion||selected?.provider!==provider)return snapshot();
+   if(a===accountVersion)account=kilnAddress(accounts?.[0]);if(c===chainVersion)chainId=walletChain(chain);if(!busy)error='';emit();
+  }catch(cause){if(!disposed&&current===epoch&&revision===refreshVersion&&selected?.provider===provider&&!busy){error=fail(cause);emit();}}
+  return snapshot();
+ }
+ function connect(id){
+  if(disposed)return Promise.reject(walletCancelled());if(flight)return flight;
+  const list=providers(),next=id?list.find(item=>item.id===id):selected??(list.length===1?list[0]:null);
+  if(!next)return Promise.reject(Object.assign(Error(list.length?'Choose a wallet':'No wallet installed'),{code:list.length?'choose_wallet':'no_wallet'}));
+  if(selected?.provider===next.provider&&account&&!detached&&!error)return Promise.resolve(next.provider);
+  persist(false);activate(next);epoch++;busy='connecting';error='';const current=epoch,provider=next.provider,a=accountVersion;emit();
+  let request=accountRequests.get(provider);
+  if(!request){request=Promise.resolve().then(()=>provider.request({method:'eth_requestAccounts'}));accountRequests.set(provider,request);request.finally(()=>{if(accountRequests.get(provider)===request)accountRequests.delete(provider);}).catch(()=>{});}
+  const run=(async()=>{
+   try{
+    const accounts=await deadline(request);if(disposed||current!==epoch)throw walletCancelled();
+    if(a===accountVersion)account=kilnAddress(accounts?.[0]);if(!account)throw Object.assign(Error('Account access unavailable'),{code:4100});
+    const c=chainVersion,chain=await deadline(provider.request({method:'eth_chainId'}));if(disposed||current!==epoch)throw walletCancelled();if(c===chainVersion)chainId=walletChain(chain);if(!chainId)throw Object.assign(Error('Unknown chain'),{code:4901});
+    error='';return provider;
+   }catch(cause){if(!disposed&&current===epoch)error=fail(cause);throw cause;}
+   finally{if(!disposed&&current===epoch){busy='';emit();}if(flight===run)flight=null;}
+  })();flight=run;return run;
+ }
+ async function switchNetwork(){
+  if(!selected||!account||busy)return false;
+  const current=++epoch,provider=selected.provider;busy='switching';error='';emit();
+  try{
+   await deadline(provider.request({method:'wallet_switchEthereumChain',params:[{chainId:KILN_NETWORK.hexChainId}]}));if(disposed||current!==epoch)return false;
+   const c=chainVersion,chain=await deadline(provider.request({method:'eth_chainId'}));if(disposed||current!==epoch)return false;if(c===chainVersion)chainId=walletChain(chain);if(chainId!==KILN_NETWORK.hexChainId)throw Object.assign(Error('Use Sepolia'),{code:4901});return true;
+  }catch(cause){if(!disposed&&current===epoch)error=Number(cause?.code)===4001?'switch_rejected':fail(cause);return false;}
+  finally{if(!disposed&&current===epoch){busy='';emit();}}
+ }
+ function disconnect(){epoch++;detachListeners();detachListeners=()=>{};selected=null;account=null;chainId=null;busy='';error='';flight=null;persist(true);emit();}
+ scope.addEventListener?.('eip6963:announceProvider',announce);
+ scope.addEventListener?.('ethereum#initialized',discover);discover();
+ const restoreTimer=setTimeout(()=>{if(!disposed&&restore&&!detached&&!selected){const list=providers();if(list.length===1){activate(list[0]);void refresh();}}},150);
+ return {getSnapshot:snapshot,getProvider:()=>selected?.provider,discover,connect,switchNetwork,disconnect,refresh,subscribe(fn){subscribers.add(fn);return()=>subscribers.delete(fn);},dispose(){disposed=true;epoch++;clearTimeout(restoreTimer);detachListeners();subscribers.clear();scope.removeEventListener?.('eip6963:announceProvider',announce);scope.removeEventListener?.('ethereum#initialized',discover);}};
+}
+
+const walletWords={
+ connect:['连接钱包','Connect wallet'],connecting:['等待钱包','Check your wallet'],account:['钱包','Wallet'],close:['关闭钱包面板','Close wallet panel'],pick:['选择钱包','Choose your wallet'],connected:['已连接','CONNECTED'],optional:['只在铸造 NFT 时需要钱包。','A wallet is only needed to mint.'],noWallet:['未检测到钱包','No wallet found'],install:['请在装有以太坊钱包插件的浏览器中打开。','Open in a browser with an Ethereum wallet extension.'],retry:['重新检测','Check again'],continue:['继续创作','Keep creating'],network:['当前网络','NETWORK'],sepolia:['Sepolia 测试网','Sepolia testnet'],wrong:['需要 Sepolia','Sepolia required'],switch:['切换到 Sepolia','Switch to Sepolia'],switching:['正在切换…','Switching…'],copy:['复制地址','Copy address'],copied:['地址已复制','Address copied'],copyFailed:['请选中上方地址复制。','Select the address above to copy.'],explorer:['在 Sepolia 查看 ↗','View on Sepolia ↗'],disconnect:['断开连接','Disconnect'],disconnectHint:['钱包授权可在钱包内管理。','Manage site permissions in your wallet.'],change:['更换钱包','Change wallet'],rejected:['已取消连接，你可以继续创作。','Connection cancelled. Keep creating anytime.'],switch_rejected:['已取消切换网络，钱包仍保持连接。','Network switch cancelled. Your wallet is still connected.'],unauthorized:['钱包尚未授权，请重新连接。','Account access is unavailable. Connect again.'],disconnected:['钱包已断开，请重新连接。','Your wallet disconnected. Connect again.'],unavailable:['暂时无法连接，请打开钱包后重试。','Open your wallet and try connecting again.'],pending:['请在钱包中处理已有的连接请求。','Finish the open request in your wallet.'],timeout:['钱包还没有回应，请打开钱包后重试。','Your wallet has not responded. Open it and try again.'],networkError:['网络状态不可用，请在钱包中选择 Sepolia。','Select Sepolia in your wallet and try again.'],add_network:['请在钱包中启用 Sepolia 测试网，再重试。','Enable Sepolia testnet in your wallet, then try again.'],unsupported:['请在钱包中手动选择 Sepolia。','Select Sepolia directly in your wallet.']
+};
+
+function createWalletControl({root,lang=()=> 'en',scope=globalThis,session=createWalletSession({scope}),notify=()=>{}}={}){
+ if(!root)throw Error('Wallet control needs a root');
+ const doc=root.ownerDocument,t=key=>(walletWords[key]??walletWords.unavailable)[lang()==='zh'?0:1];
+ let opened=false,choosing=false,disposed=false,pendingConnect=null,copyState='',copyRevision=0,chooserRevision=0;
+ const make=(tag,className)=>{const el=doc.createElement(tag);el.className=className;return el;};
+ const trigger=make('button','wallet-trigger'),glyph=make('span','wallet-glyph'),triggerLabel=make('span','wallet-trigger-label'),dot=make('span','wallet-dot');
+ trigger.type='button';trigger.id='wallet-connect';trigger.setAttribute('aria-controls','wallet-panel');trigger.setAttribute('aria-haspopup','dialog');glyph.setAttribute('aria-hidden','true');dot.setAttribute('aria-hidden','true');trigger.append(glyph,triggerLabel,dot);
+ const panel=make('section','wallet-panel');panel.id='wallet-panel';panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-labelledby','wallet-title');
+ const top=make('div','wallet-panel-top'),heading=make('h2','wallet-title'),close=make('button','wallet-close');heading.id='wallet-title';close.type='button';close.textContent='×';top.append(heading,close);
+ const intro=make('p','wallet-intro'),list=make('div','wallet-list'),empty=make('div','wallet-empty'),emptyTitle=make('strong',''),emptyBody=make('p',''),retry=make('button','wallet-retry');retry.type='button';empty.append(emptyTitle,emptyBody,retry);
+ const connected=make('div','wallet-account'),name=make('span','wallet-provider-name'),address=make('p','wallet-address'),network=make('div','wallet-network'),networkLabel=make('span',''),networkValue=make('strong','');address.tabIndex=0;network.append(networkLabel,networkValue);
+ const switcher=make('button','wallet-switch'),actions=make('div','wallet-account-actions'),copy=make('button','wallet-copy'),explorer=make('a','wallet-explorer'),change=make('button','wallet-change'),disconnect=make('button','wallet-disconnect'),note=make('p','wallet-footnote');
+ switcher.type=copy.type=change.type=disconnect.type='button';explorer.target='_blank';explorer.rel='noopener noreferrer';actions.append(copy,explorer);connected.append(name,address,network,switcher,actions,change,disconnect,note);
+ const feedback=make('p','wallet-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');const keep=make('button','wallet-keep');keep.type='button';panel.append(top,intro,list,empty,connected,feedback,keep);root.classList.add('wallet-control');root.replaceChildren(trigger,panel);
+ function render(){
+  if(disposed)return;const state=session.getSnapshot();root.dataset.walletState=state.busy||state.error||(state.connected?state.correctChain?'connected':'wrong-network':'disconnected');
+  triggerLabel.textContent=state.busy==='connecting'?t('connecting'):state.connected?walletShort(state.account):t('connect');trigger.setAttribute('aria-label',state.busy==='connecting'?t('connecting'):state.connected?t('account')+' '+state.account+' · '+(state.correctChain?t('sepolia'):t('wrong')):t('connect'));trigger.setAttribute('aria-expanded',String(opened));trigger.setAttribute('aria-busy',String(!!state.busy));trigger.title=state.connected?(state.correctChain?t('sepolia'):t('wrong')):t('optional');
+  panel.hidden=!opened;heading.textContent=t(state.connected&&!choosing?'account':'pick');close.setAttribute('aria-label',t('close'));intro.textContent=t('optional');intro.hidden=state.connected&&!choosing;
+  connected.hidden=!state.connected||choosing;list.hidden=state.connected&&!choosing;empty.hidden=state.providers.length>0||state.connected;
+  // 钱包元数据只作为纯文本，不装载扩展自报的SVG/远程图标。
+  const priorFocus=doc.activeElement?.dataset?.walletId;list.replaceChildren();for(const provider of state.providers){const button=make('button','wallet-option'),mark=make('span','wallet-option-mark'),label=make('span',''),arrow=make('span','wallet-option-arrow');button.type='button';button.dataset.walletId=provider.id;button.disabled=!!state.busy;mark.textContent=provider.name.slice(0,1).toUpperCase();mark.setAttribute('aria-hidden','true');label.textContent=provider.name;arrow.textContent='↗';arrow.setAttribute('aria-hidden','true');button.append(mark,label,arrow);button.addEventListener('click',()=>void choose(provider.id));list.append(button);if(priorFocus===provider.id)button.focus({preventScroll:true});}
+  emptyTitle.textContent=t('noWallet');emptyBody.textContent=t('install');retry.textContent=t('retry');name.textContent=state.providerName;address.textContent=state.account??'';networkLabel.textContent=t('network');networkValue.textContent=state.correctChain?t('sepolia'):t('wrong');network.dataset.correct=String(state.correctChain);switcher.hidden=state.correctChain;switcher.disabled=!!state.busy;switcher.textContent=t(state.busy==='switching'?'switching':'switch');copy.textContent=t(copyState||'copy');explorer.textContent=t('explorer');if(state.account)explorer.href=KILN_NETWORK.explorer+'/address/'+state.account;else explorer.removeAttribute('href');change.textContent=t('change');change.hidden=state.providers.length<2;disconnect.textContent=t('disconnect');note.textContent=t('disconnectHint');keep.textContent=t('continue');keep.hidden=state.connected&&!choosing;feedback.hidden=!state.error;feedback.textContent=state.error?t(state.error==='network'?'networkError':state.error):'';
+ }
+ function open(pick=false){opened=true;choosing=pick;session.discover();render();(pick||!session.getSnapshot().connected?list.querySelector('button')??retry:close).focus({preventScroll:true});}
+ function shut({focus=true,cancel=true}={}){chooserRevision++;opened=false;choosing=false;if(cancel&&pendingConnect){pendingConnect.reject(walletCancelled());pendingConnect=null;}render();if(focus)trigger.focus({preventScroll:true});}
+ async function choose(id){
+  const revision=++chooserRevision,owner=pendingConnect;
+  try{const provider=await session.connect(id);if(disposed||revision!==chooserRevision)return;choosing=false;copyState='';copyRevision++;if(owner&&pendingConnect===owner){owner.resolve(provider);pendingConnect=null;shut({focus:false,cancel:false});}else render();}
+  catch(cause){if(disposed||revision!==chooserRevision)return;if(owner&&pendingConnect===owner){owner.reject(cause);pendingConnect=null;}opened=true;render();}
+ }
+ function connect(){
+  if(disposed)return Promise.reject(walletCancelled());const state=session.getSnapshot();
+  if(state.connected&&!state.error&&!state.busy)return Promise.resolve(session.getProvider());
+  if(pendingConnect)return pendingConnect.promise;let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});pendingConnect={resolve,reject,promise};
+  open(true);if(state.busy==='connecting'&&state.providerId)void choose(state.providerId);else if(state.providers.length===1)void choose(state.providers[0].id);return promise;
+ }
+ const onTrigger=()=>{const state=session.getSnapshot();if(opened){shut();return;}if(state.connected||state.providers.length!==1){open(!state.connected);return;}open(true);void choose(state.providers[0].id);};
+ const onOutside=event=>{if(opened&&!root.contains(event.target))shut({focus:false});};
+ const onKey=event=>{if(opened&&event.key==='Escape'){event.preventDefault();shut();}};
+ trigger.addEventListener('click',onTrigger);close.addEventListener('click',()=>shut());keep.addEventListener('click',()=>shut());retry.addEventListener('click',()=>{session.discover();render();});change.addEventListener('click',()=>open(true));switcher.addEventListener('click',()=>void session.switchNetwork());disconnect.addEventListener('click',()=>{session.disconnect();shut();});
+ copy.addEventListener('click',async()=>{const revision=++copyRevision,account=session.getSnapshot().account;if(!account)return;try{await scope.navigator?.clipboard?.writeText(account);if(!scope.navigator?.clipboard?.writeText)throw Error('Unavailable');if(!disposed&&revision===copyRevision&&account===session.getSnapshot().account){copyState='copied';render();}}catch{if(!disposed&&revision===copyRevision){copyState='copyFailed';render();address.focus();}}});
+ const unsubscribe=session.subscribe(()=>{copyState='';copyRevision++;render();});doc.addEventListener('pointerdown',onOutside);doc.addEventListener('keydown',onKey);render();
+ return {connect,getProvider:session.getProvider,refresh:session.refresh,render,getState:session.getSnapshot,dispose(){disposed=true;pendingConnect?.reject(walletCancelled());pendingConnect=null;unsubscribe();session.dispose();doc.removeEventListener('pointerdown',onOutside);doc.removeEventListener('keydown',onKey);}};
+}
+
+
+
+
 
 
 
@@ -2909,7 +3108,7 @@ let lang=(params.get('lang')||read('wheel-clay-lang-v2','en'))==='en'?'en':'zh',
 let raw=null,failed=false,pending=false,lastPoll=0,controller=null,generation=0,toastTimer=0,studio=null,orders=null,ready=false,saving=false,tickCount=0,apiSample=null,soundReady=false,page='home',connectionError='',responseStatus=0,hasAttempt=false,lastSuccessAt=0,lastReceivedSample=0,responseMs=0;
 let companions=null,companionId=getCompanion(read('wheel-clay-companion-v2','8889'))?.id||'8889';
 glaze=getCompanion(companionId).glaze;
-let home=null,share=null,pieceView=null,kilnView=null,nftRouteGeneration=0,workspaceInView=false,modalOpen=false,galleryBusy=false,musicWanted=read('wheel-clay-music-enabled',true)!==false;
+let home=null,share=null,wallet=null,pieceView=null,kilnView=null,nftRouteGeneration=0,workspaceInView=false,modalOpen=false,galleryBusy=false,musicWanted=read('wheel-clay-music-enabled',true)!==false;
 const studioActive=()=>!document.hidden&&!modalOpen&&((['studio','home'].includes(page)&&workspaceInView));
 let activityRecord=null,activityPending=false,lastActivityPoll=0;
 let collection=read('wheel-clay-collection',[]);if(!Array.isArray(collection))collection=[];collection=collection.filter(x=>x&&P.validProfile(x.profile)&&['vase','bowl','column'].includes(x.form)&&GLAZES.some(g=>g.id===x.glaze)&&Number.isFinite(x.id)&&typeof x.image==='string'&&x.image.startsWith('data:image/')).slice(-12);
@@ -3073,7 +3272,7 @@ function render(telemetryOnly=false){
  $('recent-activity').hidden=mode!=='live'||unknown||s.rpm>0||!activityRecord;put('recent-activity',activityText());renderConnection(s);
  $('save').disabled=!ready||saving;$('save').setAttribute('aria-busy',String(saving));put('save',t(saving?'saving':phase==='shape'?'next':'save'));document.querySelectorAll('#co-create button').forEach(b=>b.disabled=saving);['narrow','widen'].forEach(id=>$(id).disabled=saving||!ready||unknown||(studio?.rpm||0)<.5||(orders&&!orders.canSculpt));orders?.render();
 }
-function translate(){clearTimeout(toastTimer);$('toast').hidden=true;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('brand')+' · '+t('studio');document.querySelector('meta[name=description]').content=lang==='zh'?'真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。':'A real hamster’s wheel-speed data drives your pottery wheel. He sets the pace. You shape and glaze a piece made together.';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-label]').forEach(e=>{e.setAttribute('aria-label',t(e.dataset.label));if(e.tagName==='BUTTON')e.title=t(e.dataset.label);});document.querySelector('.brand').setAttribute('aria-label',t('brand'));$('language').setAttribute('aria-label',lang==='zh'?'界面语言':'Language');$('language').value=lang;home?.render();companions?.render();share?.render();pieceView?.render();kilnView?.render();render();if(page==='collection')renderGallery();}
+function translate(){clearTimeout(toastTimer);$('toast').hidden=true;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('brand')+' · '+t('studio');document.querySelector('meta[name=description]').content=lang==='zh'?'真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。':'A real hamster’s wheel-speed data drives your pottery wheel. He sets the pace. You shape and glaze a piece made together.';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-label]').forEach(e=>{e.setAttribute('aria-label',t(e.dataset.label));if(e.tagName==='BUTTON')e.title=t(e.dataset.label);});document.querySelector('.brand').setAttribute('aria-label',t('brand'));$('language').setAttribute('aria-label',lang==='zh'?'界面语言':'Language');$('language').value=lang;home?.render();companions?.render();share?.render();pieceView?.render();kilnView?.render();wallet?.render();render();if(page==='collection')renderGallery();}
 async function card(record,verified={}){
  return drawCompanionCard(record,{...verified,lang,glazeName:t(record.glaze),surfaceName:t('surface-'+(record.surface||'glossy')),orderCaption:record.order?orders.caption(record.order):'',timeLabel:time(record.id)+' · UTC+8'});
 }
@@ -3136,13 +3335,14 @@ $('sound-volume').addEventListener('input',e=>{sound.setVolume(Number(e.target.v
 $('wheel-sound').addEventListener('change',e=>{sound.setWheelEnabled(e.target.checked);write('wheel-clay-wheel-sound',e.target.checked);});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.audio-control'))closeSoundSettings();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('sound-panel').hidden){closeSoundSettings();$('sound-settings').focus({preventScroll:true});}});
-document.addEventListener('visibilitychange',()=>{syncSceneVisibility();if(document.hidden){sound.stop();controller?.abort();}else{render();poll();}});window.addEventListener('pagehide',e=>{sound.stop();controller?.abort();if(!e.persisted){studio?.dispose();home?.dispose();share?.dispose();pieceView?.dispose();kilnView?.dispose();companions?.dispose();}});window.addEventListener('pageshow',e=>{if(e.persisted){syncSceneVisibility();render();poll();}});
+document.addEventListener('visibilitychange',()=>{syncSceneVisibility();if(document.hidden){sound.stop();controller?.abort();}else{render();poll();}});window.addEventListener('pagehide',e=>{sound.stop();controller?.abort();if(!e.persisted){studio?.dispose();home?.dispose();share?.dispose();pieceView?.dispose();kilnView?.dispose();wallet?.dispose();companions?.dispose();}});window.addEventListener('pageshow',e=>{if(e.persisted){syncSceneVisibility();render();poll();}});
 orders=createOrders({lang:()=>lang,mode:()=>mode,signal:snapshot,profile:()=>values,rpm:()=>studio?.rpm||0,ready:()=>ready,dirty:()=>dirty,headline:()=>t('headline'),lead:()=>t(phase==='glaze'?'glazeLead':'lead'),save,navigate,
  begin(target,initialProfile,repairInfo){reset();values=P.validProfile(initialProfile)?initialProfile.slice():P.profile('column');form='column';history=P.history(values,form);studio?.setProfile(values,form);studio?.setTarget(target);if(repairInfo){$('height').value=Math.round(repairInfo.center*100);$('brush').value=Math.round(repairInfo.brushRadius*100);studio?.setBrush(repairInfo.brushRadius);studio?.setGuide(repairInfo.center);}dirty=false;render();},
  finish(){setPhase('glaze');studio?.setTarget(null);},exit(){studio?.setTarget(null);render();}});
 share=createShareControls({root:$('share-tools'),lang:()=>lang,notify:toast});
+wallet=createWalletControl({root:$('wallet-control'),lang:()=>lang});
 pieceView=createPieceView({root:$('shared-piece'),lang:()=>lang,createStudio:trackedStudio,onMakeYours:()=>navigate('studio')});
-kilnView=createKilnView({root:$('kiln-page'),lang:()=>lang,createStudio:trackedStudio,onKeep:collectPiece,onBack:()=>navigate('studio')});
+kilnView=createKilnView({root:$('kiln-page'),lang:()=>lang,createStudio:trackedStudio,onKeep:collectPiece,onBack:()=>navigate('studio'),connectWallet:()=>wallet.connect(),getWalletProvider:()=>wallet.getProvider(),onWalletChange:()=>void wallet.refresh()});
 companions=createCompanions({root:$('co-create'),lang:()=>lang,selected:()=>companionId,onSelect:chooseCompanion,onStart:startFromCompanion});
 $('change-companion').addEventListener('click',editCompanion);
 home=createHome({root:$('home-intro'),lang:()=>lang,createStudio:trackedStudio,onEnter:enterFromHome,onModeChange:switchMode,onSimChange:value=>{opening.choose('sim');hadSim=true;sim=value;if(mode!=='sim')switchMode('sim');render();}});
