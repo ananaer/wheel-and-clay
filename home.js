@@ -6,7 +6,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  const words={
   eyebrow:['仓鼠驱动的创作游乐场','A HAMSTER-POWERED PLAYGROUND'],
   title:['它来跑。','HE RUNS.'],titleAccent:['你创造。','YOU CREATE.'],
-  lead:['一只真实仓鼠提供动力。\n你的双手，赋予泥土形状。','One real hamster brings the energy.\nYour hands turn it into something.'],
+  lead:['它跑轮，你塑形。\n用真实链上轮次，烧出你的独一件。','He runs. You shape.\nFire your piece with a real onchain round.'],
   sourceLabel:['选择动力来源','Choose the power source'],live:['实时','Live'],sim:['模拟','Simulate'],
   simulationLabel:['控制模拟动力','Control simulated power'],run:['跑动','Run'],rest:['休息','Rest'],
   bufferSignal:['动力缓冲中 · 等待新样本','Buffered power · waiting for a new sample'],

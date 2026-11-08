@@ -29,7 +29,7 @@ const picking={calls:0,point:null};
 class Raycaster extends Three.Raycaster{setFromCamera(point,camera){picking.point=point.clone();super.setFromCamera(point,camera);}intersectObject(){picking.calls++;return [];}}
 globalThis.__previewThree={...Three,WebGLRenderer:Renderer,PMREMGenerator:PMREM,TextureLoader,Clock,Raycaster};
 const path=new URL('../scene.js',import.meta.url);
-const source=fs.readFileSync(path,'utf8').replace("import * as THREE from './vendor/three.module.min.js';","const THREE=globalThis.__previewThree;").replace("'./glazes.js'",JSON.stringify(new URL('../glazes.js',import.meta.url).href));
+const source=fs.readFileSync(path,'utf8').replace("import * as THREE from './vendor/three.module.min.js';","const THREE=globalThis.__previewThree;").replace("'./glazes.js'",JSON.stringify(new URL('../glazes.js',import.meta.url).href)).replace("'./kiln-art.js'",JSON.stringify(new URL('../kiln-art.js',import.meta.url).href));
 const {createStudio}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 function check(name,test){test();assert.equal(frames.size,0,'test left scheduled work');total++;console.log('PASS '+name);}
 function preview(callbacks={}){const scene=createStudio(canvas(),{presentationOnly:true,...callbacks});return [scene,renderers.at(-1)];}

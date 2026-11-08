@@ -1,0 +1,32 @@
+{
+  "chainId": 11155111,
+  "network": "Ethereum Sepolia",
+  "contract": "0xf83b2C5dC0650CCfb0a621B68C9BBbbdf35f0Cc9",
+  "deployment": {
+    "transactionHash": "0x08cf183e47db2df884605eff980d8cb6607ef295589077af8c34b86cf948d133",
+    "blockNumber": 12089425,
+    "runtimeKeccak256": "0xaf82fa9bfc28bdb28892b83951677d218cbc8bacec0dc64b6c74a3a158279394",
+    "runtimeSha256": "2a46f14b1eecf7df0425c7b035e9621de2b0f4b45d2f9532431e0cc16ded36a1",
+    "verifiedAt": "2026-11-08T08:19:05.906Z"
+  },
+  "verifiedMint": {
+    "tokenId": "1",
+    "transactionHash": "0x79796966ff7532aead4e6e3a3acb9ea89e5bac1f70d0cda98547c6d3cd9bde52",
+    "blockNumber": 12089451,
+    "blockHash": "0x175bfefba303b265499e6ff6dabdfe20bcad68649f87cbcd4aee832210244ae4",
+    "maker": "0xef23fc1266c76235bb3c16869ffb7bad670f783d",
+    "ownerAtVerification": "0xef23fc1266c76235bb3c16869ffb7bad670f783d",
+    "designHash": "0x46996de6c1defec320b9cb8962eaad4527d0dad1098fcb7921bed4bd9da43427",
+    "source": {
+      "version": 1,
+      "chainId": "11155111",
+      "core": "0xfd6c166d4b8e2962e65746a13e5a0797cd4de0c4",
+      "round": "646",
+      "work": "514",
+      "dataHash": "0xf7514c7fc87bf938f946ff48f931a9aefaaf6bf6df98785409a505aee124d3e8"
+    },
+    "verifiedAt": "2026-11-08T08:26:58.131Z",
+    "requiredConfirmations": 12,
+    "pieceUrl": "https://wheel-and-clay.shop/?nft=1"
+  }
+}

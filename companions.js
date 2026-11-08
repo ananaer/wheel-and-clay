@@ -1,3 +1,5 @@
+import {cleanKilnRecord} from './kiln-art.js';
+
 /* Squeeks 只提供配色灵感；真实跑轮动力来自 Squeektoshi。角色 ID 不代表持有权。 */
 export const COMPANIONS=Object.freeze([
  {id:'8891',glaze:'amethyst',name:['烟紫 Squeek','Amethyst Squeek'],traits:['盾形面部 · 圆点身体','Shield face · Circle body'],glazeName:['烟紫','Amethyst'],color:'#7e6b9b',accent:'#c5b1ff',imageSrc:'./brand-research/official/squeek-8891-display.png'},
@@ -110,9 +112,9 @@ function companionContain(context,image,x,y,width,height){
 }
 
 /* 只解码已保存的本地作品和已核实的打包素材；不从记录中的 URL 请求图片。 */
-export async function drawCompanionCard(record,{lang='zh',glazeName='',surfaceName='',orderCaption='',timeLabel=''}={}){
+export async function drawCompanionCard(record,{lang='zh',glazeName='',surfaceName='',orderCaption='',timeLabel='',verifiedKiln=false}={}){
  if(!record||typeof record.image!=='string'||!/^data:image\/(?:png|webp|jpeg);base64,[A-Za-z0-9+/=\r\n]+$/.test(record.image))throw new TypeError('A saved local pottery image is required.');
- const en=lang==='en',companion=getCompanion(record.companionId),sim=record.hadSim===true||record.order?.hadSim===true,live=!sim&&record.hadSim===false;
+ const en=lang==='en',companion=getCompanion(record.companionId),sim=record.hadSim===true||record.order?.hadSim===true,live=!sim&&record.hadSim===false,kiln=cleanKilnRecord(record.kiln);
  const [photo,wordmark,character]=await Promise.all([companionDecodedImage(record.image),companionDecodedImage(companionWordmarkSrc),companion?companionDecodedImage(companion.imageSrc):Promise.resolve(null)]);
  const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=1500;const g=canvas.getContext('2d');if(!g)throw new Error('The artwork card could not be created.');
  const accent=companion?.accent||'#edc47e',muted='#a69aad',line='#332b3a';
@@ -122,7 +124,9 @@ export async function drawCompanionCard(record,{lang='zh',glazeName='',surfaceNa
  companionContain(g,wordmark,70,47,310,139);
  write(label('轮间 · 共同创作','Wheel & Clay · Made together'),1130,92,{width:650,size:27,min:21,align:'right'});
  write(label('Squeekchain 社区作品','A Squeekchain community creation'),1130,132,{width:650,size:18,align:'right',color:muted});
- const source=sim?label('模拟作品','SIMULATION'):live?label('实时模式作品','LIVE MODE'):label('轮速来源未记录','SOURCE NOT RECORDED');
+ const source=kiln
+  ?sim?label('制作动力 · SIM','MAKING POWER · SIM'):live?label('制作动力 · LIVE','MAKING POWER · LIVE'):label('制作动力 · 未记录','MAKING POWER · NOT RECORDED')
+  :sim?label('模拟作品','SIMULATION'):live?label('实时模式作品','LIVE MODE'):label('轮速来源未记录','SOURCE NOT RECORDED');
  write(source,1130,177,{width:650,size:18,align:'right',color:accent,weight:'500'});
  g.strokeStyle=line;g.beginPath();g.moveTo(70,217);g.lineTo(1130,217);g.stroke();
 
@@ -154,10 +158,17 @@ export async function drawCompanionCard(record,{lang='zh',glazeName='',surfaceNa
  for(const author of authors){write(author.label,author.x,1066,{width:320,size:15,color:muted});write(author.name,author.x,1114,{width:320,size:29,min:22,color:accent});write(author.detail,author.x,1154,{width:320,size:16,min:14,color:muted});}
  g.beginPath();g.moveTo(70,1190);g.lineTo(1130,1190);g.stroke();
 
+ if(kiln){
+  // 结构有效不等于链上已核验；核验状态只来自调用方读链后的显式选项，不信任记录自报。
+  g.fillStyle='#1b1920';g.fillRect(70,1204,1060,62);
+  write(label('回合窑烧','ROUND-BASED KILN'),88,1226,{width:570,size:14,color:accent,weight:'500'});
+  write(verifiedKiln===true?label('Sepolia · 链上来源已核验','Sepolia · Source verified'):label('Sepolia · 来源待核验','Sepolia · Source unverified'),1112,1226,{width:440,size:14,min:13,align:'right',color:muted});
+  write(`Round ${kiln.round} · Work ${kiln.work}`,88,1254,{width:1024,size:21,min:18,color:'#d3c7dc'});
+ }
  const rawTurns=record.order?.used??record.turns,turns=typeof rawTurns==='number'&&Number.isFinite(rawTurns)&&rawTurns>=0?rawTurns:null;
- write(turns===null?label('陶轮圈数未记录','Pottery-wheel turns not recorded'):`${turns.toFixed(1)} ${label('陶轮圈数','pottery-wheel turns')}`,70,1240,{width:510,size:22,color:'#d3c7dc'});
- write(typeof timeLabel==='string'&&timeLabel.trim()?timeLabel:label('创作时间未记录','Creation time not recorded'),1130,1240,{width:510,size:19,align:'right',color:muted});
- if(typeof orderCaption==='string'&&orderCaption.trim())write(orderCaption,70,1291,{width:1060,size:23,min:18,color:'#d3c7dc'});
+ write(turns===null?label('陶轮圈数未记录','Pottery-wheel turns not recorded'):`${turns.toFixed(1)} ${label('陶轮圈数','pottery-wheel turns')}`,70,kiln?1294:1240,{width:510,size:22,color:'#d3c7dc'});
+ write(typeof timeLabel==='string'&&timeLabel.trim()?timeLabel:label('创作时间未记录','Creation time not recorded'),1130,kiln?1294:1240,{width:510,size:19,align:'right',color:muted});
+ if(typeof orderCaption==='string'&&orderCaption.trim())write(orderCaption,70,kiln?1324:1291,{width:1060,size:kiln?18:23,min:kiln?16:18,color:'#d3c7dc'});
  g.beginPath();g.moveTo(70,1342);g.lineTo(1130,1342);g.stroke();
  write(label('把下一件，交给你的双手。','Make the next one yours.'),70,1395,{width:1060,size:27,min:22,color:'#ece6f1'});
  write(label('社区作品 · 非官方发布','Community creation · Not an official release'),70,1439,{width:680,size:16,color:muted});

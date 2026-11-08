@@ -11,7 +11,7 @@ spec.loader.exec_module(module)
 
 
 def fixture():
-    styles = ''.join(f'<style>.s{i}{{color:red}}</style>' for i in range(7))
+    styles = ''.join(f'<style>.s{i}{{color:red}}</style>' for i in range(8))
     scripts = '<script>window.a=1;</script><script>window.b=2;</script><script type="module">const c=3;</script>'
     return ('<!doctype html><html><head><meta name="squeekchain-project" content="' +
             module.PROJECT_ID + '">' + styles + '</head><body><h1>Pottery</h1>' + scripts + '</body></html>').encode()
@@ -27,7 +27,7 @@ class PagesBuildTests(unittest.TestCase):
         html = re.sub(r'<script( type="module")? src="([^"]+)"></script>',
                       lambda m: '<script' + (m[1] or '') + '>' + outputs[m[2]].decode() + '</script>', html)
         self.assertEqual(html.encode(), fixture())
-        self.assertEqual(len(manifest['files']), 14)
+        self.assertEqual(len(manifest['files']), 15)
         self.assertLessEqual(len(outputs['index.html']), 32768)
 
     def test_changed_script_execution_is_rejected(self):

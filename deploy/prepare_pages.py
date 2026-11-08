@@ -53,7 +53,7 @@ def package(page, license_bytes):
         return tag
 
     small = PARTS.sub(extract, source)
-    if counts != {'style': 7, 'script': 3}:
+    if counts != {'style': 8, 'script': 3}:
         raise ValueError('入口资源数量改变，需要重新审查。')
     restored = small
     for tag, original in replacements:

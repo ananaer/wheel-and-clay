@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.min.js';
 import {getGlaze,getSurface,materialFor} from './glazes.js';
+import {kilnRecipe} from './kiln-art.js';
 
 /* 真正的可编辑旋转体，不使用预渲染器物图片。 */
 export function createStudio(canvas,callbacks={}){
@@ -85,6 +86,9 @@ export function createStudio(canvas,callbacks={}){
  const ceramic=new THREE.MeshPhysicalMaterial({color:'#276f62',roughness:.15,metalness:.04,clearcoat:1,clearcoatRoughness:.11,bumpMap:bump,bumpScale:.004,envMapIntensity:1.05,side:THREE.FrontSide});
  // 纹理锁在陶器局部坐标：窑变与小爪印会绕到侧面、背面，不能靠静止高光假装旋转。
  const surfaceHeight={value:P.HEIGHT},surfaceMode={value:0},glazeAccent={value:new THREE.Color(getGlaze(glaze).accent)};
+ // 固定一套 shader；结算记录与显影进度只更新 uniform，不反复编译材质。
+ const kilnEnabled={value:0},kilnReveal={value:1},kilnEnergy={value:0},kilnPhase={value:0},kilnFlow={value:.18},kilnSeed={value:new THREE.Vector2()};
+ canvas.dataset.kilnReveal='1.0000';
  // 只在首页显影中使用片元遮罩；数值更新不会重建器形或触发阴影重算。
  const heroReveal=animatedPreview&&callbacks.heroReveal===true,glazeReveal={value:1};canvas.dataset.glazeReveal='1.0000';
  // 品牌概念可指定原始透明 SVG 为窑印；不传时保留工作台现有爪印。
@@ -96,17 +100,19 @@ export function createStudio(canvas,callbacks={}){
  function turningSurface(mat,glazed){const revealEnabled=glazed&&heroReveal,laserEnabled=glazed&&heroLaser;mat.onBeforeCompile=shader=>{
   shader.uniforms.potteryHeight=surfaceHeight;
   if(brandSeal)shader.uniforms.potterySeal={value:brandSeal};
-  if(glazed){shader.uniforms.potterySurface=surfaceMode;shader.uniforms.potteryAccent=glazeAccent;}
+  if(glazed){shader.uniforms.potterySurface=surfaceMode;shader.uniforms.potteryAccent=glazeAccent;Object.assign(shader.uniforms,{potteryKilnEnabled:kilnEnabled,potteryKilnReveal:kilnReveal,potteryKilnEnergy:kilnEnergy,potteryKilnPhase:kilnPhase,potteryKilnFlow:kilnFlow,potteryKilnSeed:kilnSeed});}
   if(revealEnabled){shader.uniforms.potteryGlazeReveal=glazeReveal;shader.uniforms.potteryClayColor={value:clay.color};}
   if(laserEnabled){shader.uniforms.potteryLaserProgress=laserProgress;shader.uniforms.potteryLaserActive=laserActive;shader.uniforms.potteryLaserPixelRatio=laserPixelRatio;}
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;\nuniform float potteryHeight;').replace('#include <begin_vertex>','#include <begin_vertex>\npotteryUV=uv;\npotteryY=position.y/potteryHeight;');
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;':'')+(revealEnabled?'\nuniform float potteryGlazeReveal;\nuniform vec3 potteryClayColor;':'')+(laserEnabled?'\nuniform float potteryLaserProgress;\nuniform float potteryLaserActive;\nuniform float potteryLaserPixelRatio;':'')).replace('#include <color_fragment>',`#include <color_fragment>
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 potteryUV;\nvarying float potteryY;'+(brandSeal?'\nuniform sampler2D potterySeal;':'')+(glazed?'\nuniform float potterySurface;\nuniform vec3 potteryAccent;\nuniform float potteryKilnEnabled;\nuniform float potteryKilnReveal;\nuniform float potteryKilnEnergy;\nuniform float potteryKilnPhase;\nuniform float potteryKilnFlow;\nuniform vec2 potteryKilnSeed;':'')+(revealEnabled?'\nuniform float potteryGlazeReveal;\nuniform vec3 potteryClayColor;':'')+(laserEnabled?'\nuniform float potteryLaserProgress;\nuniform float potteryLaserActive;\nuniform float potteryLaserPixelRatio;':'')).replace('#include <color_fragment>',`#include <color_fragment>
    float theta=potteryUV.x*6.2831853;
    float clayFlow=sin(theta*3.0+sin(potteryY*7.0)*0.9)*0.6+sin(theta*5.0-potteryY*9.0)*0.4;
    diffuseColor.rgb*=1.0+clayFlow*${glazed?'0.13':'0.085'};
    ${glazed?`
    float mineralSpot=0.0;
    float glazeEdge=0.0;
+   vec3 potteryBaseGlaze=diffuseColor.rgb;
+   float kilnRoughness=0.0;
    if(potterySurface>1.5&&potterySurface<2.5){
     // 稀疏矿物颗粒在整格内随机分布；邻格采样避免越界颗粒被切成规则方阵。
     // 圆周 92 个完整周期，首尾接缝连续；斑点位置与陶器一起旋转。
@@ -135,6 +141,33 @@ export function createStudio(canvas,callbacks={}){
     glazeEdge=1.0-smoothstep(0.0,0.025,abs(potteryY-edgeHeight));
     diffuseColor.rgb=mix(diffuseColor.rgb,potteryAccent*(1.0+clayFlow*0.10),topGlaze*0.96);
     diffuseColor.rgb*=1.0-glazeEdge*0.13;
+   }
+   if(potteryKilnEnabled>0.5&&potteryKilnReveal>0.0){
+    // 整数圆周频率保证接缝连续。局部坐标与静态种子使前后视角、分享和截图一致。
+    float kilnP=potteryKilnPhase;
+    vec2 kilnS=potteryKilnSeed*6.2831853;
+    float kilnE=potteryKilnEnergy;
+    float kilnWarp=sin(theta*3.0+kilnP+sin(potteryY*5.0+kilnS.x)*0.65);
+    float kilnVein=sin(theta*7.0-kilnS.y+potteryY*(1.4+potteryKilnFlow*3.0)+kilnWarp*0.75);
+    float kilnRun=pow(max(0.0,0.5+0.5*kilnVein),5.0);
+    float kilnCloud=sin(theta*5.0+kilnP+sin(potteryY*9.0+kilnS.x)*1.1)*sin(theta*9.0-potteryY*12.0+kilnS.y);
+    float kilnBloom=smoothstep(0.28,0.72,kilnCloud);
+    vec3 kilnColor=diffuseColor.rgb;
+    if(potterySurface>2.5){
+     // 双釉重算垂釉边界；工作量越高，长流痕越深入瓶腹，仍保留原来的两种釉色。
+     float kilnLong=pow(max(0.0,sin(theta*3.0+kilnP)),12.0);
+     float kilnShort=pow(max(0.0,sin(theta*7.0+kilnS.x)),9.0);
+     float kilnEdgeHeight=0.66+sin(theta*5.0+kilnS.y)*0.025-kilnLong*(0.04+potteryKilnFlow*0.46)-kilnShort*(0.025+potteryKilnFlow*0.12);
+     float kilnTop=smoothstep(kilnEdgeHeight-0.014,kilnEdgeHeight+0.025,potteryY);
+     float kilnEdge=1.0-smoothstep(0.0,0.025,abs(potteryY-kilnEdgeHeight));
+     kilnColor=mix(potteryBaseGlaze,potteryAccent*(1.0+clayFlow*0.10),kilnTop*0.96)*(1.0-kilnEdge*0.13);
+     kilnRoughness+=(kilnEdge-glazeEdge)*0.08;
+    }
+    // 窑斑与细流影响明暗和表面质感，不把用户所选釉色替换成另一种颜色。
+    kilnColor*=1.0+kilnCloud*(0.025+kilnE*0.09)-kilnBloom*(0.025+kilnE*0.13);
+    kilnColor=mix(kilnColor,potteryAccent*(0.83+kilnCloud*0.06),kilnRun*(0.025+kilnE*0.18));
+    diffuseColor.rgb=mix(diffuseColor.rgb,kilnColor,potteryKilnReveal);
+    kilnRoughness+=(kilnBloom*0.10-kilnRun*0.055)*(0.2+kilnE*0.8);
    }`:''}
    float dx=potteryUV.x-0.04;dx-=floor(dx+0.5);
    vec2 seal=vec2(dx*70.0,(potteryY-0.34)*34.0);
@@ -189,6 +222,7 @@ export function createStudio(canvas,callbacks={}){
   shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
    roughnessFactor=clamp(roughnessFactor*(1.0+clayFlow*${glazed?'0.35':'0.18'}),0.06,1.0);
    ${glazed?'roughnessFactor=clamp(roughnessFactor+mineralSpot*0.20+glazeEdge*0.08,0.06,1.0);':''}
+   ${glazed?'if(potteryKilnEnabled>0.5&&potteryKilnReveal>0.0)roughnessFactor=mix(roughnessFactor,clamp(roughnessFactor+kilnRoughness,0.06,1.0),potteryKilnReveal);':''}
    ${revealEnabled?'roughnessFactor=mix(0.5*(1.0+clayFlow*0.18),roughnessFactor,glazeCoverage);':''}
    ${laserEnabled?`roughnessFactor=mix(roughnessFactor,0.30+0.015*cos(brandUV.y*251.3274),stamp${revealEnabled?'*glazeCoverage':''});`:''}
   `);
@@ -209,7 +243,7 @@ export function createStudio(canvas,callbacks={}){
     material.clearcoat=mix(material.clearcoat,0.14,stamp${revealEnabled?'*glazeCoverage':''});
    #endif
   `);
- };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?heroCraft?'-hero-reveal-craft-v1':'-hero-reveal-v1':'')+(laserEnabled?'-hero-laser-v1':'');}
+ };mat.customProgramCacheKey=()=>(glazed?'wheel-clay-glaze-surfaces-v3-kiln-v1':'wheel-clay-earth-motion-v2')+(brandSeal?'-official-seal':'')+(revealEnabled?heroCraft?'-hero-reveal-craft-v1':'-hero-reveal-v1':'')+(laserEnabled?'-hero-laser-v1':'');}
  turningSurface(clay,false);turningSurface(ceramic,true);
  // 小幅首页预览减少圆周细分；纵向塑形精度与工作台网格保持不变。
  const SEG=animatedPreview?96:144,RINGS=P.COUNT*2+10,positions=new Float32Array(RINGS*(SEG+1)*3),uv=new Float32Array(RINGS*(SEG+1)*2),indices=[];
@@ -322,6 +356,15 @@ export function createStudio(canvas,callbacks={}){
   },
   setProfile(v,type=kind){values=v.slice();kind=type;changed=true;invalidate(true);},setRpm(v){targetRpm=Number.isFinite(v)?P.clamp(v,0,90):0;},get rpm(){return rpm;},get frame(){return frame;},
   setTarget,setPhase(next){up();pendingHover=null;phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
+  setKiln(record){
+   const recipe=kilnRecipe(record);kilnEnabled.value=recipe?1:0;kilnEnergy.value=recipe?recipe.energyBps/10000:0;kilnPhase.value=recipe?.phase??0;kilnFlow.value=recipe?.flow??.18;
+   // 拆成两段 16 位，避免 WebGL float 丢失 32 位种子的低位信息。
+   kilnSeed.value.set(recipe?(recipe.seed32&0xffff)/65535:0,recipe?(recipe.seed32>>>16)/65535:0);
+   if(recipe){canvas.dataset.kilnRound=recipe.record.round;canvas.dataset.kilnWork=recipe.record.work;canvas.dataset.kilnSeed=String(recipe.seed32);}
+   else{delete canvas.dataset.kilnRound;delete canvas.dataset.kilnWork;delete canvas.dataset.kilnSeed;}
+   invalidate();return !!recipe;
+  },
+  setKilnReveal(value){if(!Number.isFinite(value))return;const next=P.clamp(value,0,1);if(next===kilnReveal.value)return;kilnReveal.value=next;canvas.dataset.kilnReveal=next.toFixed(4);if(kilnEnabled.value)invalidate();},
   setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
   setPresentationScale(value){if(!Number.isFinite(value))return;const next=P.clamp(value,.85,1.25);if(next===presentationScale)return;presentationScale=next;baseCameraDistance=7.5/next;cameraDistance=baseCameraDistance*(entranceTime<entranceDuration?1+.04*(1-entranceTime/entranceDuration)**3:1);setCamera();},
   // 器物局部原点在底面：只缩放高度即可保持贴盘，不改真实轮廓、几何或游戏高度。

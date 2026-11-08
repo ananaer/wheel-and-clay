@@ -1,5 +1,6 @@
-import {buildPieceUrl,cleanPieceRecord} from './piece-link.js';
+import {buildPieceShareUrl,cleanPieceRecord,cleanVerifiedPieceNft} from './piece-link.js';
 import {getCompanion} from './companions.js';
+import {cleanKilnRecord} from './kiln-art.js';
 /* 分享只交给用户确认：不上传图片，不调用 X 发帖接口，也不读取当前位置或账号。 */
 export const SHARE_URL='https://wheel-and-clay.shop/';
 const shareWords={
@@ -21,8 +22,13 @@ const shareWords={
 const shareLang=lang=>lang==='en'?'en':'zh';
 
 // 不接收自由输入或当前 URL；SIM 痕迹不能被后续切换实时模式抹掉。
-export function buildShareCopy(record={},lang='zh'){
+export function buildShareCopy(record={},lang='zh',options={}){
  const en=shareLang(lang)==='en',sim=record?.hadSim===true||record?.order?.hadSim===true;
+ const kiln=cleanKilnRecord(record?.kiln),nft=cleanVerifiedPieceNft(record,options);
+ if(kiln){
+  const verified=!!nft||options.verifiedKiln===true,token=nft?.tokenId.length>16?nft.tokenId.slice(0,6)+'…'+nft.tokenId.slice(-6):nft?.tokenId;
+  return [en?'I shaped this in Wheel & Clay.':'我在「轮间」亲手做了一件陶器。',sim?(en?'Shaping: simulation.':'制作：模拟练习。'):record?.hadSim===false?(en?'Shaping: live mode.':'制作：实时模式。'):(en?'Shaping source not recorded.':'制作动力来源未记录。'),en?`Kiln: Sepolia round ${kiln.round} · work ${kiln.work}.`:`窑烧：Sepolia 回合 ${kiln.round} · 工作量 ${kiln.work}。`,verified?(en?'Source verified.':'回合来源已核验。'):(en?'Shared recipe · source unverified.':'分享配方 · 回合来源待核验。'),nft?(en?`Sepolia NFT #${token}.`:`Sepolia NFT #${token}。`):'',en?'Make yours ↓':'来做你的下一件 ↓'].filter(Boolean).join('\n');
+ }
  const source=sim?(en?'Made in simulation.':'模拟练习作品。'):record?.hadSim===false?(en?'Made in live mode.':'实时模式作品。'):(en?'Wheel source not recorded.':'轮速来源未记录。');
  const order=record?.order,score=typeof order?.score==='number'&&Number.isFinite(order.score)&&order.score>=0&&order.score<=100?Math.round(order.score):null;
  const mode=order?.play==='repair'?(en?'Rescue a Pot':'修坯委托'):order?.play==='study'?(en?'Open practice':'临摹练习'):order?.play==='turns'||(order&&!order.play)?(en?'Twenty turns':'20 圈订单'):order?.play==='burst'?(en?'One run only':'一跑定形'):null;
@@ -30,9 +36,9 @@ export function buildShareCopy(record={},lang='zh'){
  const result=mode&&score!==null?(en?`${mode} · ${score}% shape match.`:`${mode} · 轮廓吻合 ${score}%。`):'';
  return [en?'I made this in Wheel & Clay on Squeekchain. Squeektoshi sets the rhythm; I shape the clay.':'我在 Squeekchain 社区工坊「轮间」做了一件陶器。Squeektoshi 决定节奏，我来塑形。',muse,result,source,en?'Make yours ↓':'来做你的下一件 ↓'].filter(Boolean).join('\n');
 }
-export function buildXIntent(record={},lang='zh'){
+export function buildXIntent(record={},lang='zh',options={}){
  const url=new URL('https://x.com/intent/tweet');
- url.searchParams.set('text',buildShareCopy(record,lang));url.searchParams.set('url',buildPieceUrl(record,lang));
+ url.searchParams.set('text',buildShareCopy(record,lang,options));url.searchParams.set('url',buildPieceShareUrl(record,lang,options));
  return url.toString();
 }
 export function shareFileName(record={}){
@@ -74,19 +80,20 @@ export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
   if(disposed)return;
   heading.textContent=label('title');link.textContent=label(busy==='link'?'copying':status==='linkCopied'?'linkCopied':'link');linkHint.textContent=label('linkHint');fallback.setAttribute('aria-label',label('linkLabel'));link.disabled=!piece?.link;link.setAttribute('aria-busy',String(busy==='link'));linkRow.hidden=!piece?.link;download.textContent=label('download');x.textContent=label(copied?'xCopied':'x');native.textContent=label(busy==='native'?'sharing':'native');copy.textContent=label(busy==='copy'?'copying':'copy');
   instruction.textContent=label(nativeSupported?'nativeHint':copySupported?'instruction':'downloadInstruction');feedback.textContent=status?label(status):'';feedback.hidden=!status;
-  root.dataset.shareReady=String(!!file);root.dataset.nativeShare=String(nativeSupported);root.dataset.copyShare=String(copySupported);root.dataset.copied=String(copied);root.dataset.shareStatus=status;root.setAttribute('aria-label',label('title'));root.setAttribute('aria-busy',String(!!busy));
+  root.dataset.shareReady=String(!!file);root.dataset.nativeShare=String(nativeSupported);root.dataset.copyShare=String(copySupported);root.dataset.copied=String(copied);root.dataset.shareStatus=status;root.dataset.shareNft=String(piece?.options.verifiedNft===true);root.setAttribute('aria-label',label('title'));root.setAttribute('aria-busy',String(!!busy));
   for(const link of [download,x]){link.setAttribute('aria-disabled',String(!file||busy));link.tabIndex=file&&!busy?0:-1;}
   native.hidden=!nativeSupported;native.disabled=!!busy||!file;copy.hidden=!copySupported;copy.disabled=!!busy||!file;
-  if(file){download.href=objectUrl;download.download=file.name;x.href=buildXIntent(piece.record,language());fallback.value=piece.link?buildPieceUrl(piece.record,language()):'';}
+  if(file){download.href=objectUrl;download.download=file.name;x.href=buildXIntent(piece.record,language(),piece.options);fallback.value=piece.link?buildPieceShareUrl(piece.record,language(),piece.options):'';}
   else{download.removeAttribute('href');x.removeAttribute('href');download.removeAttribute('download');}
  }
- function setPiece(next){
+ function setPiece(next,options={}){
   revision++;release();piece=null;status='';busy='';copied=false;fallback.hidden=true;
   try{
    if(!next?.record)throw new TypeError('Missing piece');
    const geometry=cleanPieceRecord(next.record);
-   const record={...geometry,companionId:getCompanion(next.record.companionId)?.id||null,hadSim:next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null};
-   file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record,dataUrl:next.dataUrl,link:!!geometry};
+   const nft=cleanVerifiedPieceNft(next.record,options);
+   const record={...geometry,companionId:getCompanion(next.record.companionId)?.id||null,hadSim:geometry?.hadSim??next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null,...(nft?{maker:nft.maker,nft:{chainId:nft.chainId,contract:nft.contract,tokenId:nft.tokenId,owner:nft.owner}}:{})};
+   file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record,dataUrl:next.dataUrl,link:!!geometry,options:{verifiedNft:!!nft,verifiedKiln:!!geometry?.kiln&&(!!nft||options.verifiedKiln===true)}};
    try{nativeSupported=typeof nav.share==='function'&&typeof nav.canShare==='function'&&nav.canShare({files:[file]});}catch{nativeSupported=false;}
    try{copySupported=typeof nav.clipboard?.write==='function'&&typeof view.ClipboardItem==='function'&&(typeof view.ClipboardItem.supports!=='function'||view.ClipboardItem.supports('image/png'));}catch{copySupported=false;}
   }catch{release();status='unavailable';}
@@ -103,7 +110,7 @@ export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
  }
  async function nativeClick(){
   if(!file||busy||!nativeSupported)return;
-  const payload={files:[file],title:language()==='en'?'My Wheel & Clay piece':'我的轮间作品',text:buildShareCopy(piece.record,language()),url:buildPieceUrl(piece.record,language())};
+  const payload={files:[file],title:language()==='en'?'My Wheel & Clay piece':'我的轮间作品',text:buildShareCopy(piece.record,language(),piece.options),url:buildPieceShareUrl(piece.record,language(),piece.options)};
   const current=revision;busy='native';status='';render();
   try{await nav.share(payload);if(!disposed&&current===revision)updateStatus('shared');}
   catch(error){if(!disposed&&current===revision&&error?.name!=='AbortError')updateStatus('failed');}
@@ -111,7 +118,7 @@ export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
  }
  async function linkClick(){
   if(!piece?.link||busy)return;const current=revision;busy='link';status='';render();
-  try{if(typeof nav.clipboard?.writeText!=='function')throw new Error('Clipboard unavailable');await nav.clipboard.writeText(buildPieceUrl(piece.record,language()));if(!disposed&&current===revision){fallback.hidden=true;updateStatus('linkCopied');}}
+  try{if(typeof nav.clipboard?.writeText!=='function')throw new Error('Clipboard unavailable');await nav.clipboard.writeText(buildPieceShareUrl(piece.record,language(),piece.options));if(!disposed&&current===revision){fallback.hidden=true;updateStatus('linkCopied');}}
   catch{if(!disposed&&current===revision){fallback.hidden=false;updateStatus('linkFallback');fallback.focus();fallback.select();}}
   finally{if(current===revision){busy='';if(!disposed)render();}}
  }

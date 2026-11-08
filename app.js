@@ -2,7 +2,10 @@ import {createPowerLink} from './power-link.js';
 import {COMPANIONS,getCompanion,createCompanions,drawCompanionCard} from './companions.js';
 import {createHome} from './home.js';
 import {createShareControls} from './share.js';
-import {createPieceView} from './piece-link.js';
+import {createPieceView,encodePieceDesign} from './piece-link.js';
+import {createKilnView} from './kiln-view.js';
+import {readNftPiece} from './nft-client.js';
+import {loadKilnRounds} from './kiln-chain.js';
 import {GLAZES,FINISHES} from './glazes.js';
 import {createStudio} from './scene.js';
 import {createOrders} from './orders.js';
@@ -19,7 +22,7 @@ let lang=(params.get('lang')||read('wheel-clay-lang-v2','en'))==='en'?'en':'zh',
 let raw=null,failed=false,pending=false,lastPoll=0,controller=null,generation=0,toastTimer=0,studio=null,orders=null,ready=false,saving=false,tickCount=0,apiSample=null,soundReady=false,page='home',connectionError='',responseStatus=0,hasAttempt=false,lastSuccessAt=0,lastReceivedSample=0,responseMs=0;
 let companions=null,companionId=getCompanion(read('wheel-clay-companion-v2','8889'))?.id||'8889';
 glaze=getCompanion(companionId).glaze;
-let home=null,share=null,pieceView=null,workspaceInView=false,modalOpen=false,galleryBusy=false,musicWanted=read('wheel-clay-music-enabled',true)!==false;
+let home=null,share=null,pieceView=null,kilnView=null,nftRouteGeneration=0,workspaceInView=false,modalOpen=false,galleryBusy=false,musicWanted=read('wheel-clay-music-enabled',true)!==false;
 const studioActive=()=>!document.hidden&&!modalOpen&&((['studio','home'].includes(page)&&workspaceInView));
 let activityRecord=null,activityPending=false,lastActivityPoll=0;
 let collection=read('wheel-clay-collection',[]);if(!Array.isArray(collection))collection=[];collection=collection.filter(x=>x&&P.validProfile(x.profile)&&['vase','bowl','column'].includes(x.form)&&GLAZES.some(g=>g.id===x.glaze)&&Number.isFinite(x.id)&&typeof x.image==='string'&&x.image.startsWith('data:image/')).slice(-12);
@@ -73,6 +76,11 @@ function renderConnection(s){
 for(const item of GLAZES)words[item.id]=item.name;
 for(const item of FINISHES)words['surface-'+item.id]=item.name;
 words.surface=['表面工艺','Surface finish'];
+Object.assign(words,{
+ save:['用仓鼠开窑 ↗','Fire with Squeektoshi ↗'],helpSave:['选一个真实结算轮次，预览窑变后收藏分享，或自愿铸造 Sepolia 陶器 NFT。','Pick a settled round, preview its kiln marks, then keep and share or optionally mint a Sepolia pottery NFT.'],
+ aboutPrivacy:['塑形、窑变预览与分享无需钱包。只有自愿铸造独立陶器 NFT 时才请求 Sepolia 测试网交易。','Shaping, kiln previews and sharing need no wallet. Only an optional pottery NFT mint requests a Sepolia testnet transaction.'],
+ aboutTitle:['塑形、施釉、开窑。','Shape. Glaze. Fire.']
+});
 const t=k=>words[k]?.[lang==='zh'?0:1]||k,put=(id,text)=>{if($(id).textContent!==String(text))$(id).textContent=text;};
 function setupPalette(){
  const swatches=document.querySelector('.swatches'),surfaces=$('surface-options');
@@ -108,7 +116,7 @@ async function enterMusic(){
  if(!musicWanted||sound.on||sound.starting||document.hidden)return;
  try{await sound.start();}catch{render();}
 }
-function syncSceneVisibility(){studio?.setVisible(studioActive());home?.setVisible(page==='home'&&!document.hidden&&!modalOpen);pieceView?.setVisible(page==='piece'&&!document.hidden&&!modalOpen);if(!studioActive())sound.update(0);}
+function syncSceneVisibility(){studio?.setVisible(studioActive());home?.setVisible(page==='home'&&!document.hidden&&!modalOpen);pieceView?.setVisible(page==='piece'&&!document.hidden&&!modalOpen);kilnView?.setVisible(page==='kiln'&&!document.hidden&&!modalOpen);if(!studioActive())sound.update(0);}
 function scrollToSection(id){
  const el=$(id);if(!el)return;
  el.scrollIntoView({behavior:reducedMotion.matches?'instant':'smooth',block:'start'});
@@ -178,21 +186,33 @@ function render(telemetryOnly=false){
  $('recent-activity').hidden=mode!=='live'||unknown||s.rpm>0||!activityRecord;put('recent-activity',activityText());renderConnection(s);
  $('save').disabled=!ready||saving;$('save').setAttribute('aria-busy',String(saving));put('save',t(saving?'saving':phase==='shape'?'next':'save'));document.querySelectorAll('#co-create button').forEach(b=>b.disabled=saving);['narrow','widen'].forEach(id=>$(id).disabled=saving||!ready||unknown||(studio?.rpm||0)<.5||(orders&&!orders.canSculpt));orders?.render();
 }
-function translate(){clearTimeout(toastTimer);$('toast').hidden=true;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('brand')+' · '+t('studio');document.querySelector('meta[name=description]').content=lang==='zh'?'真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。':'A real hamster’s wheel-speed data drives your pottery wheel. He sets the pace. You shape and glaze a piece made together.';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-label]').forEach(e=>{e.setAttribute('aria-label',t(e.dataset.label));if(e.tagName==='BUTTON')e.title=t(e.dataset.label);});document.querySelector('.brand').setAttribute('aria-label',t('brand'));$('language').setAttribute('aria-label',lang==='zh'?'界面语言':'Language');$('language').value=lang;home?.render();companions?.render();share?.render();pieceView?.render();render();if(page==='collection')renderGallery();}
-async function card(record){
- return drawCompanionCard(record,{lang,glazeName:t(record.glaze),surfaceName:t('surface-'+(record.surface||'glossy')),orderCaption:record.order?orders.caption(record.order):'',timeLabel:time(record.id)+' · UTC+8'});
+function translate(){clearTimeout(toastTimer);$('toast').hidden=true;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('brand')+' · '+t('studio');document.querySelector('meta[name=description]').content=lang==='zh'?'真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。':'A real hamster’s wheel-speed data drives your pottery wheel. He sets the pace. You shape and glaze a piece made together.';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-label]').forEach(e=>{e.setAttribute('aria-label',t(e.dataset.label));if(e.tagName==='BUTTON')e.title=t(e.dataset.label);});document.querySelector('.brand').setAttribute('aria-label',t('brand'));$('language').setAttribute('aria-label',lang==='zh'?'界面语言':'Language');$('language').value=lang;home?.render();companions?.render();share?.render();pieceView?.render();kilnView?.render();render();if(page==='collection')renderGallery();}
+async function card(record,verified={}){
+ return drawCompanionCard(record,{...verified,lang,glazeName:t(record.glaze),surfaceName:t('surface-'+(record.surface||'glossy')),orderCaption:record.order?orders.caption(record.order):'',timeLabel:time(record.id)+' · UTC+8'});
+}
+function freezeCurrentPiece(){return {id:pieceId,createdAt,profile:values.slice(),form,glaze,surface,finish,turns,hadSim,apiSample,companionId,order:orders?.result?{...orders.result}:null};}
+async function collectPiece(frozen,image,verified={}){
+ const thumbnailCanvas=document.createElement('canvas'),photo=new Image();photo.src=image;await photo.decode();thumbnailCanvas.width=1200;thumbnailCanvas.height=1100;thumbnailCanvas.getContext('2d').drawImage(photo,0,0,1200,1100);
+ const record={...frozen,image:thumbnailCanvas.toDataURL('image/webp',.86)};
+ const index=collection.findIndex(v=>v.id===record.id),updated=collection.slice();if(index===-1)updated.push(record);else updated[index]=record;const next=updated.slice(-12),stored=write('wheel-clay-collection',next);if(stored){collection=next;if(record.id===pieceId){dirty=false;savedId=pieceId;}}
+ const full=await card({...record,image},verified);$('saved-image').src=full;share?.setPiece({dataUrl:full,record,caption:record.order?orders.caption(record.order):''},verified);$('saved-image').alt=t('coauthor')+' · '+t(record.glaze);put('save-status',t(stored?'saved':'saveFailed'));$('saved-dialog').showModal();render();return stored;
 }
 async function save(){if(!studio||saving)return false;saving=true;setPhase('glaze');render();try{
- const frozen={id:pieceId,createdAt,profile:values.slice(),form,glaze,surface,finish,turns,hadSim,apiSample,companionId,order:orders?.result?{...orders.result}:null};
- await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
- const image=studio.capture(1200,1100),thumbnailCanvas=document.createElement('canvas'),photo=new Image();photo.src=image;await photo.decode();thumbnailCanvas.width=1200;thumbnailCanvas.height=1100;thumbnailCanvas.getContext('2d').drawImage(photo,0,0,1200,1100);
- const record={...frozen,image:thumbnailCanvas.toDataURL('image/webp',.86)};
- const index=collection.findIndex(v=>v.id===pieceId),updated=collection.slice();if(index===-1)updated.push(record);else updated[index]=record;const next=updated.slice(-12),stored=write('wheel-clay-collection',next);if(stored){collection=next;dirty=false;savedId=pieceId;}
- const full=await card({...record,image});$('saved-image').src=full;share?.setPiece({dataUrl:full,record,caption:record.order?orders.caption(record.order):''});$('saved-image').alt=t('coauthor')+' · '+t(glaze)+(record.order?' · '+orders.caption(record.order):'');put('save-status',t(stored?'saved':'saveFailed'));$('saved-dialog').showModal();return stored;
+ const frozen=freezeCurrentPiece();await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ return await collectPiece(frozen,studio.capture(1200,1100));
  }catch(error){console.error('Keepsake creation failed',error);toast(t('saveError'));return false;}finally{saving=false;render();}}
+function openKiln(){if(!studio||saving||kilnView?.isBusy)return;setPhase('glaze');if(kilnView.open(freezeCurrentPiece()))navigate('kiln');}
+async function verifyCollectedPiece(record){
+ const verified={verifiedKiln:false,verifiedNft:false};if(!record.kiln)return verified;
+ try{if(record.nft?.tokenId){const actual=await readNftPiece(record.nft.tokenId);if(actual.nft.contract===record.nft.contract&&encodePieceDesign(actual)===encodePieceDesign(record)&&JSON.stringify(actual.kiln)===JSON.stringify(record.kiln)){record.nft=actual.nft;record.maker=actual.maker;verified.verifiedNft=true;verified.verifiedKiln=true;}}
+ if(!verified.verifiedKiln){const source=await loadKilnRounds({round:record.kiln.round,count:1});verified.verifiedKiln=JSON.stringify(source.records[0])===JSON.stringify(record.kiln);}}
+ catch{/* 来源暂不可读时保留待核验语义，不把本地记录当作链上凭证。 */}return verified;
+}
+async function openNft(tokenId){const serial=++nftRouteGeneration;pieceView.showLoading();try{const actual=await readNftPiece(tokenId);if(serial!==nftRouteGeneration||page!=='piece')return;pieceView.showRecord(actual,{verifiedNft:true,verifiedKiln:true});}catch{if(serial===nftRouteGeneration&&page==='piece')pieceView.showError();}}
+
 function renderGallery(){const root=$('gallery');root.replaceChildren();if(!collection.length){const empty=document.createElement('div');empty.className='gallery-empty';const p=document.createElement('p');p.textContent=t('empty');const action=document.createElement('button');action.className='primary-button';action.textContent=t('goCreate');action.addEventListener('click',()=>navigate('studio'));empty.append(p,action);root.append(empty);return;}const grid=document.createElement('div');grid.className='gallery-grid';for(const record of collection.slice().reverse()){const button=document.createElement('button');button.className='gallery-card';button.setAttribute('aria-label',t('browse')+' '+time(record.id));const image=document.createElement('img');image.src=record.image;image.alt=t(record.glaze);const title=document.createElement('strong');title.textContent=t(record.glaze)+(orders.name(record.order)?' · '+orders.name(record.order):'');const line=document.createElement('span');line.textContent=t('surface-'+(record.surface||'glossy'))+' · '+t(record.hadSim===true||record.order?.hadSim===true?'simMade':record.hadSim===false?'liveMade':'sourceUnrecorded');const stamp=document.createElement('span');stamp.textContent=time(record.id);button.append(image,title,line);const companion=getCompanion(record.companionId);if(companion){const credit=document.createElement('span');credit.textContent=(lang==='zh'?'配色灵感 · ':'Palette muse · ')+'Squeek #'+companion.id;button.append(credit);}if(record.order){const result=document.createElement('span');result.textContent=orders.caption(record.order,false);button.append(result);}button.append(stamp);button.addEventListener('click',async()=>{
  if(galleryBusy)return;galleryBusy=true;button.disabled=true;button.setAttribute('aria-busy','true');toast(t('galleryLoading'));
- try{const full=await card(record);if(page!=='collection')return;$('saved-image').src=full;share?.setPiece({dataUrl:full,record});$('saved-image').alt=title.textContent+(record.order?' · '+orders.caption(record.order,false):'');put('save-status',t('saved'));$('toast').hidden=true;$('saved-dialog').showModal();}
+ try{const verified=await verifyCollectedPiece(record);const full=await card(record,verified);if(page!=='collection')return;$('saved-image').src=full;share?.setPiece({dataUrl:full,record},verified);$('saved-image').alt=title.textContent+(record.order?' · '+orders.caption(record.order,false):'');put('save-status',t('saved'));$('toast').hidden=true;$('saved-dialog').showModal();}
  catch{toast(t('galleryError'));}
  finally{galleryBusy=false;button.disabled=false;button.removeAttribute('aria-busy');}
  });grid.append(button);}root.append(grid);}
@@ -203,20 +223,20 @@ document.querySelectorAll('[data-sim]').forEach(b=>b.addEventListener('click',()
 
 document.querySelectorAll('[data-surface]').forEach(b=>b.addEventListener('click',()=>{if(saving||surface===b.dataset.surface)return;surface=b.dataset.surface;dirty=true;studio?.setSurface(surface);render();}));
 $('brush').addEventListener('input',()=>{studio?.setBrush(+$('brush').value/100);render();});$('finish').addEventListener('input',()=>{if(saving)return;finish=+$('finish').value/100;dirty=true;studio?.setFinish(finish);render();});$('height').addEventListener('input',()=>{studio?.setGuide(+$('height').value/100);put('height-value',$('height').value+'%');});$('narrow').addEventListener('click',()=>nudge(-1));$('widen').addEventListener('click',()=>nudge(1));
-$('undo').addEventListener('click',()=>{if(saving)return;values=history.undo();updateHistory();toast(t('undoDone'));});$('redo').addEventListener('click',()=>{if(saving)return;values=history.redo();updateHistory();toast(t('redoDone'));});$('reset-view').addEventListener('click',()=>{studio?.resetView();toast(t('viewReset'));});$('new').addEventListener('click',newPiece);$('discard').addEventListener('click',()=>{$('new-dialog').close();reset();});$('save-first').addEventListener('click',async()=>{$('new-dialog').close();if(await save()){reset();put('save-status',t('freshSaved'));}});$('save').addEventListener('click',()=>orders?.running?orders.finish():phase==='shape'?setPhase('glaze'):save());
+$('undo').addEventListener('click',()=>{if(saving)return;values=history.undo();updateHistory();toast(t('undoDone'));});$('redo').addEventListener('click',()=>{if(saving)return;values=history.redo();updateHistory();toast(t('redoDone'));});$('reset-view').addEventListener('click',()=>{studio?.resetView();toast(t('viewReset'));});$('new').addEventListener('click',newPiece);$('discard').addEventListener('click',()=>{$('new-dialog').close();reset();});$('save-first').addEventListener('click',async()=>{$('new-dialog').close();if(await save()){reset();put('save-status',t('freshSaved'));}});$('save').addEventListener('click',()=>orders?.running?orders.finish():phase==='shape'?setPhase('glaze'):openKiln());
 function navigate(next,{push=true}={}){
- const sharedRoute=typeof next==='string'&&next.startsWith('piece=');page=sharedRoute?'piece':['home','studio','orders','collection'].includes(next)?next:'home';if(page!=='home')lockOpening();document.body.dataset.page=page;if(page==='studio'&&push)enterMusic();
+ const sharedRoute=typeof next==='string'&&next.startsWith('piece='),nftRoute=typeof next==='string'&&/^nft=[1-9][0-9]{0,76}$/.test(next);if(next==='kiln'&&!kilnView?.hasPiece&&!kilnView?.resume())next='studio';page=sharedRoute||nftRoute?'piece':['home','studio','orders','collection','kiln'].includes(next)?next:'home';nftRouteGeneration++;if(page!=='home')lockOpening();document.body.dataset.page=page;if(page==='studio'&&push)enterMusic();
  document.querySelectorAll('[data-view]').forEach(el=>el.hidden=el.dataset.view!==page&&!(page==='home'&&el.dataset.view==='studio')&&!(['home','studio'].includes(page)&&el.dataset.view==='companions'));
  syncNavigation();
- if(sharedRoute){pieceView?.setVisible(true);pieceView?.show('#'+next);}
+ if(sharedRoute){pieceView?.setVisible(true);pieceView?.show('#'+next);}else if(nftRoute){pieceView?.setVisible(true);openNft(next.slice(4));}
  syncSceneVisibility();if(!studioActive())sound.update(0);closeSoundSettings();
  if(page==='collection')renderGallery();
- if(push&&!sharedRoute&&location.hash!=='#'+page)window.history.pushState(null,'',location.pathname+location.search+'#'+page);
+ if(push&&!sharedRoute&&!nftRoute&&location.hash!=='#'+page)window.history.pushState(null,'',location.pathname+location.search+'#'+page);
  render();if(page==='studio')$('studio').scrollIntoView({behavior:'instant',block:'start'});else window.scrollTo({top:0,behavior:'instant'});document.querySelector(`[data-view="${page}"] h1`)?.focus({preventScroll:true});
 }
 document.querySelectorAll('[data-page]').forEach(el=>el.addEventListener('click',()=>{if(el.dataset.page==='studio')enterMusic();navigate(el.dataset.page);}));
 $('resume-order').addEventListener('click',()=>navigate('studio'));$('gallery-work').addEventListener('click',()=>navigate('studio'));
-window.addEventListener('popstate',()=>navigate(location.hash.slice(1),{push:false}));
+window.addEventListener('popstate',()=>navigate(location.hash.slice(1)||((params.get('nft')?'nft='+params.get('nft'):'')),{push:false}));
 $('about').addEventListener('click',()=>$('about-dialog').showModal());document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.close).close()));
 $('back-work').addEventListener('click',()=>{$('saved-dialog').close();navigate('studio');});
 $('open-collection').addEventListener('click',()=>{$('saved-dialog').close();navigate('collection');});
@@ -229,15 +249,16 @@ $('sound-volume').addEventListener('input',e=>{sound.setVolume(Number(e.target.v
 $('wheel-sound').addEventListener('change',e=>{sound.setWheelEnabled(e.target.checked);write('wheel-clay-wheel-sound',e.target.checked);});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.audio-control'))closeSoundSettings();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('sound-panel').hidden){closeSoundSettings();$('sound-settings').focus({preventScroll:true});}});
-document.addEventListener('visibilitychange',()=>{syncSceneVisibility();if(document.hidden){sound.stop();controller?.abort();}else{render();poll();}});window.addEventListener('pagehide',e=>{sound.stop();controller?.abort();if(!e.persisted){studio?.dispose();home?.dispose();share?.dispose();pieceView?.dispose();companions?.dispose();}});window.addEventListener('pageshow',e=>{if(e.persisted){syncSceneVisibility();render();poll();}});
+document.addEventListener('visibilitychange',()=>{syncSceneVisibility();if(document.hidden){sound.stop();controller?.abort();}else{render();poll();}});window.addEventListener('pagehide',e=>{sound.stop();controller?.abort();if(!e.persisted){studio?.dispose();home?.dispose();share?.dispose();pieceView?.dispose();kilnView?.dispose();companions?.dispose();}});window.addEventListener('pageshow',e=>{if(e.persisted){syncSceneVisibility();render();poll();}});
 orders=createOrders({lang:()=>lang,mode:()=>mode,signal:snapshot,profile:()=>values,rpm:()=>studio?.rpm||0,ready:()=>ready,dirty:()=>dirty,headline:()=>t('headline'),lead:()=>t(phase==='glaze'?'glazeLead':'lead'),save,navigate,
  begin(target,initialProfile,repairInfo){reset();values=P.validProfile(initialProfile)?initialProfile.slice():P.profile('column');form='column';history=P.history(values,form);studio?.setProfile(values,form);studio?.setTarget(target);if(repairInfo){$('height').value=Math.round(repairInfo.center*100);$('brush').value=Math.round(repairInfo.brushRadius*100);studio?.setBrush(repairInfo.brushRadius);studio?.setGuide(repairInfo.center);}dirty=false;render();},
  finish(){setPhase('glaze');studio?.setTarget(null);},exit(){studio?.setTarget(null);render();}});
 share=createShareControls({root:$('share-tools'),lang:()=>lang,notify:toast});
 pieceView=createPieceView({root:$('shared-piece'),lang:()=>lang,createStudio:trackedStudio,onMakeYours:()=>navigate('studio')});
+kilnView=createKilnView({root:$('kiln-page'),lang:()=>lang,createStudio:trackedStudio,onKeep:collectPiece,onBack:()=>navigate('studio')});
 companions=createCompanions({root:$('co-create'),lang:()=>lang,selected:()=>companionId,onSelect:chooseCompanion,onStart:startFromCompanion});
 $('change-companion').addEventListener('click',editCompanion);
 home=createHome({root:$('home-intro'),lang:()=>lang,createStudio:trackedStudio,onEnter:enterFromHome,onModeChange:switchMode,onSimChange:value=>{opening.choose('sim');hadSim=true;sim=value;if(mode!=='sim')switchMode('sim');render();}});
 const workspaceObserver=new IntersectionObserver(entries=>{workspaceInView=entries[0].isIntersecting&&entries[0].intersectionRect.height>Math.min(100,entries[0].boundingClientRect.height/3);if(workspaceInView)lockOpening();syncSceneVisibility();syncNavigation();},{threshold:[0,.1,.25,.5]});workspaceObserver.observe(document.querySelector('.stage'));
 const modalObserver=new MutationObserver(()=>{const next=!!document.querySelector('dialog[open]');if(next!==modalOpen){modalOpen=next;syncSceneVisibility();}});modalObserver.observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
-translate();navigate(location.hash.slice(1),{push:false});if(mode==='live'||opening.automatic){poll();pollActivity();}setInterval(()=>{if(document.hidden)return;render(true);if((mode==='live'||opening.automatic)&&Date.now()-lastPoll>8000)poll();if(mode==='live')pollActivity();},350);
+translate();navigate(location.hash.slice(1)||((params.get('nft')?'nft='+params.get('nft'):'')),{push:false});if(mode==='live'||opening.automatic){poll();pollActivity();}setInterval(()=>{if(document.hidden)return;render(true);if((mode==='live'||opening.automatic)&&Date.now()-lastPoll>8000)poll();if(mode==='live')pollActivity();},350);
