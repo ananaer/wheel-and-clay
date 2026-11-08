@@ -63,7 +63,9 @@ Finish and collect your piece, then choose **Copy piece link**. The receiver can
 
 **Mint this piece** is an optional Sepolia ERC-721 transaction. Your wallet asks you to confirm it; gas is paid with Sepolia test ETH. The collection charges no mint fee. Ordinary firing, local collection and sharing remain available without a wallet.
 
-The page distinguishes transaction inclusion, the following 12 blocks, and final artwork verification. A brief connection loss is retried; reopening the kiln resumes the saved transaction without sending another mint. The completion reveal and NFT link appear only after the artwork checks pass.
+Connect your wallet from the top-right corner, or when you choose to mint. The menu shows the selected account and network, with an explicit switch to Sepolia and a local disconnect. Connecting alone never signs or sends a transaction.
+
+The page immediately acknowledges a submitted transaction. Once a successful receipt and the exact submitted design match, it shows **Mint complete** and the completion reveal. You can keep creating or share the local piece while the following blocks and full artwork verification run in the background. The verified NFT link appears after those checks pass. A brief connection loss is retried; reopening the kiln resumes the saved transaction without sending another mint.
 
 The NFT freezes the complete 270-byte 3D design, the selected glaze and the round's work and data hash. Its on-chain metadata includes a **2D profile preview**; the website reconstructs the full 3D piece from contract data at `?nft=TOKEN_ID`. A verified NFT view shows its maker and current owner with explorer links. Stored local labels alone do not establish NFT ownership.
 
@@ -116,6 +118,7 @@ Tests cover shaping, power, challenges, kiln recipes, source validation, sharing
 | `home.js` / `craft-demo.js` / `engraving.js` | Homepage introduction |
 | `share.js` / `piece-link.js` | Cards and portable 3D piece links |
 | `kiln-art.js` / `kiln-chain.js` / `kiln-view.js` | Deterministic kiln finish, settled-round reads and firing flow |
+| `wallet.js` / `wallet.css` | Wallet selection, account and network state, and the header menu |
 | `nft-client.js` / `contracts/` | Optional Sepolia minting, verified NFT reads and frozen artwork |
 | `audio.js` / `activity.js` | Original procedural sound and page activity |
 | `build.py` / `deploy/` | Standalone build and static-hosting preparation |

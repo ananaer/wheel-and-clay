@@ -17,7 +17,7 @@ export async function kilnCodeSha256(code){
 }
 let kilnReadId=0;
 export async function publicKilnRead(method,params=[],{signal,fetcher=globalThis.fetch,timeoutMs=12000}={}){
- if(!['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_call','eth_getCode','eth_getStorageAt','eth_getTransactionReceipt','eth_getBalance'].includes(method))throw Error('Read method not allowed');
+ if(!['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_call','eth_getCode','eth_getStorageAt','eth_getTransactionReceipt','eth_getTransactionByHash','eth_getBalance'].includes(method))throw Error('Read method not allowed');
  if(!Array.isArray(params)||!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>12000)throw Error('Invalid read options');
  const id=++kilnReadId,controller=new AbortController(),abort=()=>controller.abort();if(signal?.aborted)throw new DOMException('Aborted','AbortError');signal?.addEventListener('abort',abort,{once:true});const timer=setTimeout(abort,timeoutMs);
  try{

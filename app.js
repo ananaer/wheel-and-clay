@@ -2,6 +2,7 @@ import {createPowerLink} from './power-link.js';
 import {COMPANIONS,getCompanion,createCompanions,drawCompanionCard} from './companions.js';
 import {createHome} from './home.js';
 import {createShareControls} from './share.js';
+import {createWalletControl} from './wallet.js';
 import {createPieceView,encodePieceDesign} from './piece-link.js';
 import {createKilnView} from './kiln-view.js';
 import {readNftPiece} from './nft-client.js';
@@ -22,7 +23,7 @@ let lang=(params.get('lang')||read('wheel-clay-lang-v2','en'))==='en'?'en':'zh',
 let raw=null,failed=false,pending=false,lastPoll=0,controller=null,generation=0,toastTimer=0,studio=null,orders=null,ready=false,saving=false,tickCount=0,apiSample=null,soundReady=false,page='home',connectionError='',responseStatus=0,hasAttempt=false,lastSuccessAt=0,lastReceivedSample=0,responseMs=0;
 let companions=null,companionId=getCompanion(read('wheel-clay-companion-v2','8889'))?.id||'8889';
 glaze=getCompanion(companionId).glaze;
-let home=null,share=null,pieceView=null,kilnView=null,nftRouteGeneration=0,workspaceInView=false,modalOpen=false,galleryBusy=false,musicWanted=read('wheel-clay-music-enabled',true)!==false;
+let home=null,share=null,wallet=null,pieceView=null,kilnView=null,nftRouteGeneration=0,workspaceInView=false,modalOpen=false,galleryBusy=false,musicWanted=read('wheel-clay-music-enabled',true)!==false;
 const studioActive=()=>!document.hidden&&!modalOpen&&((['studio','home'].includes(page)&&workspaceInView));
 let activityRecord=null,activityPending=false,lastActivityPoll=0;
 let collection=read('wheel-clay-collection',[]);if(!Array.isArray(collection))collection=[];collection=collection.filter(x=>x&&P.validProfile(x.profile)&&['vase','bowl','column'].includes(x.form)&&GLAZES.some(g=>g.id===x.glaze)&&Number.isFinite(x.id)&&typeof x.image==='string'&&x.image.startsWith('data:image/')).slice(-12);
@@ -186,7 +187,7 @@ function render(telemetryOnly=false){
  $('recent-activity').hidden=mode!=='live'||unknown||s.rpm>0||!activityRecord;put('recent-activity',activityText());renderConnection(s);
  $('save').disabled=!ready||saving;$('save').setAttribute('aria-busy',String(saving));put('save',t(saving?'saving':phase==='shape'?'next':'save'));document.querySelectorAll('#co-create button').forEach(b=>b.disabled=saving);['narrow','widen'].forEach(id=>$(id).disabled=saving||!ready||unknown||(studio?.rpm||0)<.5||(orders&&!orders.canSculpt));orders?.render();
 }
-function translate(){clearTimeout(toastTimer);$('toast').hidden=true;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('brand')+' · '+t('studio');document.querySelector('meta[name=description]').content=lang==='zh'?'真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。':'A real hamster’s wheel-speed data drives your pottery wheel. He sets the pace. You shape and glaze a piece made together.';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-label]').forEach(e=>{e.setAttribute('aria-label',t(e.dataset.label));if(e.tagName==='BUTTON')e.title=t(e.dataset.label);});document.querySelector('.brand').setAttribute('aria-label',t('brand'));$('language').setAttribute('aria-label',lang==='zh'?'界面语言':'Language');$('language').value=lang;home?.render();companions?.render();share?.render();pieceView?.render();kilnView?.render();render();if(page==='collection')renderGallery();}
+function translate(){clearTimeout(toastTimer);$('toast').hidden=true;document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('brand')+' · '+t('studio');document.querySelector('meta[name=description]').content=lang==='zh'?'真实仓鼠的跑轮数据，驱动你面前的陶艺转盘。它决定节奏，你亲手塑形、施釉，留下一件共同创作的陶器。':'A real hamster’s wheel-speed data drives your pottery wheel. He sets the pace. You shape and glaze a piece made together.';document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-label]').forEach(e=>{e.setAttribute('aria-label',t(e.dataset.label));if(e.tagName==='BUTTON')e.title=t(e.dataset.label);});document.querySelector('.brand').setAttribute('aria-label',t('brand'));$('language').setAttribute('aria-label',lang==='zh'?'界面语言':'Language');$('language').value=lang;home?.render();companions?.render();share?.render();pieceView?.render();kilnView?.render();wallet?.render();render();if(page==='collection')renderGallery();}
 async function card(record,verified={}){
  return drawCompanionCard(record,{...verified,lang,glazeName:t(record.glaze),surfaceName:t('surface-'+(record.surface||'glossy')),orderCaption:record.order?orders.caption(record.order):'',timeLabel:time(record.id)+' · UTC+8'});
 }
@@ -249,13 +250,14 @@ $('sound-volume').addEventListener('input',e=>{sound.setVolume(Number(e.target.v
 $('wheel-sound').addEventListener('change',e=>{sound.setWheelEnabled(e.target.checked);write('wheel-clay-wheel-sound',e.target.checked);});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('.audio-control'))closeSoundSettings();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('sound-panel').hidden){closeSoundSettings();$('sound-settings').focus({preventScroll:true});}});
-document.addEventListener('visibilitychange',()=>{syncSceneVisibility();if(document.hidden){sound.stop();controller?.abort();}else{render();poll();}});window.addEventListener('pagehide',e=>{sound.stop();controller?.abort();if(!e.persisted){studio?.dispose();home?.dispose();share?.dispose();pieceView?.dispose();kilnView?.dispose();companions?.dispose();}});window.addEventListener('pageshow',e=>{if(e.persisted){syncSceneVisibility();render();poll();}});
+document.addEventListener('visibilitychange',()=>{syncSceneVisibility();if(document.hidden){sound.stop();controller?.abort();}else{render();poll();}});window.addEventListener('pagehide',e=>{sound.stop();controller?.abort();if(!e.persisted){studio?.dispose();home?.dispose();share?.dispose();pieceView?.dispose();kilnView?.dispose();wallet?.dispose();companions?.dispose();}});window.addEventListener('pageshow',e=>{if(e.persisted){syncSceneVisibility();render();poll();}});
 orders=createOrders({lang:()=>lang,mode:()=>mode,signal:snapshot,profile:()=>values,rpm:()=>studio?.rpm||0,ready:()=>ready,dirty:()=>dirty,headline:()=>t('headline'),lead:()=>t(phase==='glaze'?'glazeLead':'lead'),save,navigate,
  begin(target,initialProfile,repairInfo){reset();values=P.validProfile(initialProfile)?initialProfile.slice():P.profile('column');form='column';history=P.history(values,form);studio?.setProfile(values,form);studio?.setTarget(target);if(repairInfo){$('height').value=Math.round(repairInfo.center*100);$('brush').value=Math.round(repairInfo.brushRadius*100);studio?.setBrush(repairInfo.brushRadius);studio?.setGuide(repairInfo.center);}dirty=false;render();},
  finish(){setPhase('glaze');studio?.setTarget(null);},exit(){studio?.setTarget(null);render();}});
 share=createShareControls({root:$('share-tools'),lang:()=>lang,notify:toast});
+wallet=createWalletControl({root:$('wallet-control'),lang:()=>lang});
 pieceView=createPieceView({root:$('shared-piece'),lang:()=>lang,createStudio:trackedStudio,onMakeYours:()=>navigate('studio')});
-kilnView=createKilnView({root:$('kiln-page'),lang:()=>lang,createStudio:trackedStudio,onKeep:collectPiece,onBack:()=>navigate('studio')});
+kilnView=createKilnView({root:$('kiln-page'),lang:()=>lang,createStudio:trackedStudio,onKeep:collectPiece,onBack:()=>navigate('studio'),connectWallet:()=>wallet.connect(),getWalletProvider:()=>wallet.getProvider(),onWalletChange:()=>void wallet.refresh()});
 companions=createCompanions({root:$('co-create'),lang:()=>lang,selected:()=>companionId,onSelect:chooseCompanion,onStart:startFromCompanion});
 $('change-companion').addEventListener('click',editCompanion);
 home=createHome({root:$('home-intro'),lang:()=>lang,createStudio:trackedStudio,onEnter:enterFromHome,onModeChange:switchMode,onSimChange:value=>{opening.choose('sim');hadSim=true;sim=value;if(mode!=='sim')switchMode('sim');render();}});

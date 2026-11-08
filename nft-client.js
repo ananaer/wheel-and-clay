@@ -55,6 +55,10 @@ function nftReceiptIdentity(receipt,account,address,hash){
  if(!kilnAddress(account)||!kilnAddress(address)||!nftTxUrl(hash)||!receipt||receipt.transactionHash?.toLowerCase()!==hash.toLowerCase()||kilnAddress(receipt.from)!==kilnAddress(account)||kilnAddress(receipt.to)!==kilnAddress(address)||!['0x0','0x1'].includes(receipt.status)||!/^0x[0-9a-f]{64}$/i.test(receipt.blockHash)||receipt.blockHash===NFT_ZERO_HASH||!Array.isArray(receipt.logs)||receipt.logs.length>1024)throw Error('Receipt identity mismatch');
  kilnQuantity(receipt.blockNumber);kilnQuantity(receipt.transactionIndex);
 }
+function nftReceiptTransaction(transaction,receipt,reference,expected){
+ // 立即成功必须对应这份冻结设计。仅支持直调EOA，不能把别的作品的hash套给预览。
+ if(!transaction||transaction.hash?.toLowerCase()!==reference.transactionHash||kilnAddress(transaction.from)!==reference.account||kilnAddress(transaction.to)!==reference.contract||transaction.input?.toLowerCase()!==encodeMintCall(expected)||kilnQuantity(transaction.value)!==0n||kilnQuantity(transaction.chainId)!==BigInt(reference.chainId)||transaction.blockHash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(transaction.blockNumber)!==BigInt(receipt.blockNumber)||kilnQuantity(transaction.transactionIndex)!==BigInt(receipt.transactionIndex))throw Error('Mint transaction differs from the frozen preview');
+}
 function nftReceiptLogs(receipt,address){
  const logs=receipt.logs.filter(log=>kilnAddress(log?.address)===kilnAddress(address));
  for(const log of logs){
@@ -110,7 +114,7 @@ function nftInterruptible(operation,{signal,timeoutMs}){
 
 export async function waitForNftMint(hash,account,record,{request=publicKilnRead,config=NFT_CONFIG,attempts=60,delay=nftDelay,onProgress=()=>{},signal,maxRpcRetries=3,pollIntervalMs=4000,retryDelayMs=1500,requestTimeoutMs=15000}={}){
  if(!nftTxUrl(hash)||!kilnAddress(account)||!nftAvailable(config)||!Number.isInteger(attempts)||attempts<0||attempts>120||typeof delay!=='function'||!Number.isInteger(maxRpcRetries)||maxRpcRetries<0||maxRpcRetries>8||![pollIntervalMs,retryDelayMs].every(value=>Number.isFinite(value)&&value>=0&&value<=30000)||!Number.isFinite(requestTimeoutMs)||requestTimeoutMs<1||requestTimeoutMs>60000)throw Error('Invalid mint reference');
- const reference=nftMintReference(hash,account,config),observed={stage:'submitted',lastObservedStage:'submitted',tokenId:null,confirmedBlocks:0,requiredDepth:12,blockNumber:null,blockHash:null};
+ const reference=nftMintReference(hash,account,config),observed={stage:'submitted',lastObservedStage:'submitted',receiptVerified:false,tokenId:null,confirmedBlocks:0,requiredDepth:12,blockNumber:null,blockHash:null};
  let expected,rpcRetries=0,chainChecked=false,lastProgress='';
  const progress=(state,extra={})=>{const detail={...reference,...observed,...extra},key=state+JSON.stringify(detail);if(key!==lastProgress){lastProgress=key;nftNotify(onProgress,state,detail);}};
  const observe=changes=>{Object.assign(observed,changes);observed.lastObservedStage=observed.stage;};
@@ -120,6 +124,7 @@ export async function waitForNftMint(hash,account,record,{request=publicKilnRead
  };
  const pause=ms=>nftInterruptible(childSignal=>delay(ms,{signal:childSignal}),{signal,timeoutMs:ms+1000});
  const unresolved=(reason,cause)=>{
+  if(reason==='verification_failed'||reason==='invalid_saved_preview')observed.receiptVerified=false;
   const retryInfo=reason==='network_retry_exhausted'?{retryCount:Math.min(Math.max(0,rpcRetries-1),maxRpcRetries),maxRetries:maxRpcRetries}:{};
   progress(reason==='aborted'?'aborted':reason==='verification_failed'||reason==='invalid_saved_preview'?'verification_failed':'pending',{reason,...retryInfo});
   return nftPendingError(reference,cause,reason,{...observed,...retryInfo});
@@ -133,17 +138,21 @@ export async function waitForNftMint(hash,account,record,{request=publicKilnRead
    const receipt=await read('eth_getTransactionReceipt',[reference.transactionHash]);
    if(receipt){
     nftReceiptIdentity(receipt,reference.account,reference.contract,reference.transactionHash);
+    if(observed.blockHash&&observed.blockHash!==receipt.blockHash.toLowerCase()){Object.assign(observed,{stage:'submitted',receiptVerified:false,tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});progress('pending',{reason:'receipt_changed'});}
     const header=await read('eth_getBlockByNumber',[receipt.blockNumber,false]);
     if(header?.hash?.toLowerCase()!==receipt.blockHash.toLowerCase()||kilnQuantity(header.number)!==BigInt(receipt.blockNumber))throw Error('Receipt block is no longer canonical');
     if(receipt.status==='0x0'){
      if(receipt.logs.length!==0)throw Error('Reverted receipt contains logs');
-     observe({stage:'reverted',blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase()});progress('reverted');
+     observe({stage:'reverted',receiptVerified:false,tokenId:null,confirmedBlocks:0,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase()});progress('reverted');
      throw Object.assign(Error('Mint transaction reverted'),reference,{...observed,code:'reverted',pending:false});
     }
     const tokenId=mintedTokenFromReceipt(receipt,reference.account,reference.contract,reference.transactionHash);
     nftFiredDesignHash(receipt,tokenId,reference.account,expected.kiln,reference.contract);
+    const transaction=await read('eth_getTransactionByHash',[reference.transactionHash]);
+    if(transaction===null)throw Object.assign(Error('Mint transaction is not yet available'),{code:'nft_rpc_error'});
+    nftReceiptTransaction(transaction,receipt,reference,expected);
     const sameBlock=observed.blockHash===receipt.blockHash.toLowerCase();
-    observe({stage:'included',tokenId,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase(),confirmedBlocks:sameBlock?observed.confirmedBlocks:0});progress('included');
+    observe({stage:'included',receiptVerified:true,tokenId,blockNumber:receipt.blockNumber,blockHash:receipt.blockHash.toLowerCase(),confirmedBlocks:sameBlock?observed.confirmedBlocks:0});progress('included');
     const tip=kilnQuantity(await read('eth_blockNumber',[]));if(tip<BigInt(receipt.blockNumber))throw Error('Receipt is beyond the chain tip');
     const depth=tip-BigInt(receipt.blockNumber);observe({confirmedBlocks:Number(depth>12n?12n:depth)});progress('included');
     // 上链立即可见；只有tip-12覆盖交易且完整作品校验通过才宣布verified。
@@ -167,7 +176,7 @@ export async function waitForNftMint(hash,account,record,{request=publicKilnRead
    }else{
     // 先前包含过也可能暂时查不到或被重组移除；当前阶段必须退回submitted。
     // lastObservedStage仅是历史，不能用来恢复已失去证据的token或确认数。
-    Object.assign(observed,{stage:'submitted',tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});
+    Object.assign(observed,{stage:'submitted',receiptVerified:false,tokenId:null,confirmedBlocks:0,blockNumber:null,blockHash:null});
     progress('pending',{reason:observed.lastObservedStage==='submitted'?'awaiting_receipt':'receipt_unavailable'});
    }
    rpcRetries=0;

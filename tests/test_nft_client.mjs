@@ -26,11 +26,12 @@ function receiptFixture(address,{account=NFT_TEST_ACCOUNT,hash=NFT_TEST_HASH,tok
 }
 function nftFixture(options={}){
  const config={chainId:'11155111',address:'0x'+(++fixtureId).toString(16).padStart(40,'0'),runtimeSha256:createHash('sha256').update(Buffer.from(NFT_TEST_CODE.slice(2),'hex')).digest('hex'),rendererVersion:1};
- const record=options.record??testRecord(),pieceData=pieceFixture(record),receipt=receiptFixture(config.address,{record}),core=coreFixture(options.core??{}),reads=[],walletCalls=[];
+ const record=options.record??testRecord(),pieceData=pieceFixture(record),receipt=receiptFixture(config.address,{record}),transaction={hash:NFT_TEST_HASH,from:NFT_TEST_ACCOUNT,to:config.address,value:'0x0',chainId:KILN_NETWORK.hexChainId,input:(()=>{try{return encodeMintCall(record);}catch{return '0x';}})(),blockNumber:'0x64',blockHash:CHAIN_BLOCK_HASH,transactionIndex:'0x0'},core=coreFixture(options.core??{}),reads=[],walletCalls=[];
  let chain=options.walletChain??KILN_NETWORK.hexChainId;
  const request=async(method,params=[])=>{
   reads.push({method,params});if(options.readOverride){const answer=await options.readOverride(method,params);if(answer!==undefined)return answer;}
   if(method==='eth_getTransactionReceipt')return Object.hasOwn(options,'receipt')?options.receipt:receipt;
+  if(method==='eth_getTransactionByHash')return Object.hasOwn(options,'transaction')?options.transaction:transaction;
   if(method==='eth_getCode'&&params[0]===config.address)return options.code??NFT_TEST_CODE;
   if(method==='eth_call'&&params[0].to===config.address){
    const data=params[0].data;
@@ -52,7 +53,7 @@ function nftFixture(options={}){
  }};
  const mint=(extra={})=>mintNft(record,{provider,request,config,waitOptions:{attempts:1,delay:async()=>{}},...extra});
  const wait=(extra={})=>waitForNftMint(NFT_TEST_HASH,NFT_TEST_ACCOUNT,record,{request,config,attempts:1,delay:async()=>{},...extra});
- return {config,record,pieceData,receipt,options,core,reads,walletCalls,request,provider,mint,wait};
+ return {config,record,pieceData,receipt,transaction,options,core,reads,walletCalls,request,provider,mint,wait};
 }
 function sent(fixture){return fixture.walletCalls.filter(call=>call.method==='eth_sendTransaction');}
 async function pending(promise,hash=NFT_TEST_HASH){
@@ -297,5 +298,29 @@ await check('近期snapshot仍严格检查runtime和冻结设计，不能借切�
   const fixture=nftFixture({...options,core:{tip:'0xc8'}}),events=[];
   const error=await pending(fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'verification_failed');assert.equal(events.some(event=>event.state==='verified'),false);
  }
+});
+await check('0-depth included先核对交易calldata及EOA身份，手工hash不能套用别的器形',async()=>{
+ const mutations=[tx=>{tx.input=tx.input.slice(0,-2)+'01';},tx=>{tx.hash='0x'+'88'.repeat(32);},tx=>{tx.from=NFT_TEST_OTHER;},tx=>{tx.to=NFT_TEST_OTHER;},tx=>{tx.value='0x1';},tx=>{tx.chainId='0x1';},tx=>{tx.blockHash='0x'+'88'.repeat(32);},tx=>{tx.blockNumber='0x63';},tx=>{tx.transactionIndex='0x1';}];
+ for(const mutate of mutations){const fixture=nftFixture({core:{tip:'0x64'}}),events=[];mutate(fixture.transaction);const error=await pending(fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.reason,'verification_failed');assert.equal(error.receiptVerified,false);assert.equal(events.some(event=>event.state==='included'),false);assert.equal(fixture.reads.some(read=>read.params[0]?.data?.startsWith(KILN_SELECTORS.piece)),false);}
+ const fixture=nftFixture({core:{tip:'0x64'}}),events=[];const error=await pending(fixture.wait({onProgress:(state,detail)=>events.push({state,...detail})}));assert.equal(error.receiptVerified,true);assert.equal(error.confirmedBlocks,0);const included=events.find(event=>event.state==='included');assert.equal(included.receiptVerified,true);assert.equal(included.confirmedBlocks,0);assert.equal(events.some(event=>event.state==='verified'),false);
+});
+await check('交易input只读请求短断重试；未核对input不能发临时成功，恢复不重发',async()=>{
+ let txReads=0;const fixture=nftFixture({readOverride(method){if(method==='eth_getTransactionByHash'&&++txReads===1)throw Error('temporary transaction read failure');}}),events=[];
+ const result=await fixture.mint({waitOptions:{attempts:3,delay:async()=>{}},onProgress:(state,detail)=>events.push({state,...detail})});assert.equal(result.nft.tokenId,'7');assert.equal(sent(fixture).length,1);const retry=events.findIndex(event=>event.state==='retrying'),included=events.findIndex(event=>event.state==='included');assert.ok(retry>=0&&included>retry);assert.equal(events[retry].receiptVerified,false);
+});
+await check('失去回执、重组、最终设计不匹配均撤销receiptVerified，短断仍保留证实事实',async()=>{
+ for(const kind of ['null','reorg','design','network']){
+  let reads=0;const fixture=nftFixture({core:{tip:kind==='design'?'0x70':'0x64'},readOverride(method,params){
+   if(method==='eth_getTransactionReceipt'&&++reads>1){if(kind==='null')return null;if(kind==='network')throw Error('offline');}
+   if(kind==='reorg'&&method==='eth_getBlockByNumber'&&reads>1)return {number:params[0],hash:'0x'+'99'.repeat(32)};
+  }});
+  if(kind==='design'){const other=testRecord();other.profile[12]=.24;fixture.options.pieceData=pieceFixture(other);}
+  const error=await pending(fixture.wait({attempts:2,maxRpcRetries:0}));assert.equal(error.receiptVerified,kind==='network');assert.equal(sent(fixture).length,0);
+ }
+});
+await check('receipt已可见但transaction暂缺时有限重试，恢复前不宣成功',async()=>{
+ let count=0;const fixture=nftFixture({readOverride(method){if(method==='eth_getTransactionByHash'&&++count===1)return null;}}),events=[];
+ const actual=await fixture.wait({attempts:2,onProgress:(state,detail)=>events.push({state,...detail})});assert.equal(actual.nft.tokenId,'7');assert.equal(events.find(event=>event.state==='retrying').receiptVerified,false);assert.ok(events.findIndex(event=>event.state==='included')>events.findIndex(event=>event.state==='retrying'));
+ const unavailable=nftFixture({transaction:null});const error=await pending(unavailable.wait({maxRpcRetries:0}));assert.equal(error.reason,'network_retry_exhausted');assert.equal(error.receiptVerified,false);
 });
 console.log(`RESULT ${total}/${total}`);

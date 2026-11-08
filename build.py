@@ -5,13 +5,13 @@ import zipfile
 import re
 root=Path(__file__).resolve().parent
 html=(root/'index.html').read_text()
-for css in ['style','home','share','companions','brand','power-link','piece-link','kiln']:
+for css in ['style','home','share','companions','brand','power-link','piece-link','kiln','wallet']:
     html=html.replace(f'<link rel="stylesheet" href="{css}.css">','<style>'+(root/f'{css}.css').read_text()+'</style>')
 for name in ['core','engine']:
     html=html.replace(f'<script src="{name}.js"></script>','<script>'+(root/f'{name}.js').read_text()+'</script>')
 three=base64.b64encode((root/'vendor/three.module.min.js').read_bytes()).decode()
 modules=[]
-for name in ['motion','qa-runner','opening','glazes','kiln-art','scene','audio','activity','orders','companions','engraving','craft-demo','power-link','home','piece-link','kiln-chain','nft-config','nft-client','kiln-view','share','app']:
+for name in ['motion','qa-runner','opening','glazes','kiln-art','scene','audio','activity','orders','companions','engraving','craft-demo','power-link','home','piece-link','kiln-chain','nft-config','nft-client','kiln-view','share','wallet','app']:
     source=(root/f'{name}.js').read_text()
     source=source.replace("'./vendor/three.module.min.js'","'data:text/javascript;base64,"+three+"'")
     source=re.sub(r"import \{[^}]+\} from './[^']+\.js';",'',source)
@@ -35,7 +35,7 @@ for mode,inject in [('idle',"window.fetch=async()=>new Response(JSON.stringify({
 # 源码包按明确名单导出，研究图、旧生成角色与验收夹不进入提交包。
 source_files=['QUALITY.md','tools/check_release_gate.py','power-link.js','power-link.css','piece-link.js','piece-link.css','index.html','core.js','engine.js','app.js','motion.js','qa-runner.js','opening.js','glazes.js','scene.js','audio.js','activity.js','orders.js','engraving.js','craft-demo.js','home.js','home.css','share.js','share.css','style.css','brand.css','companions.js','companions.css','build.py','README.md','README.zh-CN.md','CHANGELOG.md','BRAND-ASSETS.md','SUBMISSION.md','DEPLOYMENT.md','Wheel-and-Clay.html','vendor/three.module.min.js','vendor/THREE-LICENSE.txt','deploy/prepare.py','deploy/wrangler.toml','tools/rasterize.html']
 source_files += ['brand-research/official/'+name for name in brand_assets]
-source_files += ['deploy/prepare_pages.py','kiln-art.js','kiln-chain.js','nft-config.js','nft-client.js','kiln-view.js','kiln.css']
+source_files += ['deploy/prepare_pages.py','kiln-art.js','kiln-chain.js','nft-config.js','nft-client.js','kiln-view.js','kiln.css','wallet.js','wallet.css']
 source_files += [str(path.relative_to(root)) for path in sorted((root/'contracts').rglob('*')) if path.is_file()]
 source_files += ['media/README.md','media/studio.jpg','media/wheel-and-clay-intro.mp4','media/wheel-and-clay-poster.jpg']
 source_files += [str(path.relative_to(root)) for path in sorted((root/'tests').glob('test_*'))]

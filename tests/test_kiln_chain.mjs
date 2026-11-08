@@ -99,7 +99,8 @@ async function runChainTests(){
   let calls=0;
   const good=async(url,options)=>{calls++;const body=JSON.parse(options.body);assert.equal(url,KILN_NETWORK.rpc);assert.equal(options.credentials,'omit');return {ok:true,json:async()=>({jsonrpc:'2.0',id:body.id,result:'0x1'})};};
   assert.equal(await publicKilnRead('eth_chainId',[],{fetcher:good}),'0x1');
-  for(const method of ['eth_sendTransaction','eth_sendRawTransaction','personal_sign'])await assert.rejects(publicKilnRead(method,[],{fetcher:good}),/not allowed/);assert.equal(calls,1);
+  assert.equal(await publicKilnRead('eth_getTransactionByHash',['0x'+'33'.repeat(32)],{fetcher:good}),'0x1');
+  for(const method of ['eth_sendTransaction','eth_sendRawTransaction','personal_sign'])await assert.rejects(publicKilnRead(method,[],{fetcher:good}),/not allowed/);assert.equal(calls,2);
   for(const malformed of [{jsonrpc:'2.0',id:0,result:0},{jsonrpc:'1.0',id:1,result:0},{jsonrpc:'2.0',id:1,error:{}},null,[]])await assert.rejects(publicKilnRead('eth_chainId',[],{fetcher:async()=>({ok:true,json:async()=>malformed})}));
   await assert.rejects(publicKilnRead('eth_chainId',[],{fetcher:async()=>({ok:false})}),/unavailable/);
  });
