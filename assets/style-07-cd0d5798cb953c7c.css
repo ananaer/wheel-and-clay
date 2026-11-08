@@ -14,3 +14,38 @@
 .kiln-hash-entry{display:grid;gap:8px;margin-top:15px;font:10px var(--sans);color:#afbaaa}.kiln-hash-entry input{width:100%;box-sizing:border-box;background:#19201b;color:#e6dab6;border:1px solid #7b886d70;border-radius:6px;padding:10px;font:11px var(--mono)}
 
 .kiln-stage-bottom{font-size:12px;color:#a4b2a7}.kiln-rounds small{font-size:11px;color:#bac5b3}.kiln-round-label{font-size:11px;line-height:1.3}.kiln-round-mood{color:#c6cfb9}.kiln-confirmed{font-size:10px;color:#a6b59e}.kiln-source{font-size:12px}.kiln-select-head{color:#d1bf91}.kiln-refresh{font-size:11px;color:#a0b092}.kiln-locked-round{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 0;border-top:1px solid #9d9c633d}.kiln-locked-round strong{font:12px/1.6 var(--mono);color:#e1c887}.kiln-change-round{border:0;background:none;padding:7px 0;color:#afbc9d;font:11px var(--sans);cursor:pointer}.kiln-page[data-kiln-state=fired] .kiln-select-head,.kiln-page[data-kiln-state=fired] .kiln-rounds,.kiln-page[data-kiln-state=fired] .kiln-earlier{display:none}.kiln-page[data-kiln-state=fired] .kiln-effect{margin-top:8px}.kiln-mint-fee{font-size:11px;color:#a1ae99}.kiln-nft-details{font-size:11px;color:#a1ad98}
+
+/* 铸造是一次可读的交付：上链、确认、核验分别呈现，只有核验完成才封印。 */
+.kiln-mint-status{margin:2px 0 20px;padding:22px 24px;background:linear-gradient(135deg,#20251f,#151a18);border:1px solid #b8a67542;border-radius:12px;position:relative;overflow:hidden}
+.kiln-mint-status-top{display:flex;justify-content:space-between;gap:12px;color:#acae92;font:9px/1.5 var(--mono);letter-spacing:.1em}
+.kiln-mint-status h2{font:500 24px/1.15 var(--sans);letter-spacing:-.035em;color:#f0dfb6;margin:16px 0 10px;outline:none}.kiln-page #kiln-mint-heading:focus{outline:none}
+.kiln-mint-status-help{font:12px/1.65 var(--sans);color:#b2bba7;margin:0;max-width:340px}
+.kiln-confirmation-meter{height:3px;overflow:hidden;background:#ffffff10;margin-top:22px;border-radius:2px}
+.kiln-confirmation-meter i{display:block;width:100%;height:100%;background:linear-gradient(90deg,#8f9e75,#eed39b);transform:scaleX(var(--mint-confirmed,0));transform-origin:left;transition:transform .6s ease}
+.kiln-confirmation-caption{display:flex;justify-content:space-between;font:9px/1.5 var(--mono);letter-spacing:.08em;margin-top:9px;color:#a0ad96}.kiln-confirmation-caption strong{font-weight:400;color:#e7d5aa}
+.kiln-mint-retry{font:11px/1.6 var(--sans);color:#d4bb8c;margin-top:12px}.kiln-mint-retry:empty{display:none}
+.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-effect,.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-proof,.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-comparison,.kiln-page[data-mint-phase]:not([data-mint-phase=""]) .kiln-result{display:none}
+.kiln-page[data-mint-phase=verified] .kiln-actions{display:flex;flex-direction:column;padding-top:8px}
+.kiln-page[data-mint-phase=verified] .kiln-mint-status{margin-bottom:18px;border-color:#d4b96966;background:radial-gradient(ellipse at 100% 0,#b7973420,transparent 75%),#19201a}
+.kiln-page[data-mint-phase=verified] .kiln-mint-status h2{font-size:clamp(38px,3.7vw,52px);letter-spacing:-.055em;margin-top:12px}
+.kiln-page[data-mint-phase=verified] .kiln-mint-status-kicker{color:#d3bd7e}
+.kiln-page[data-mint-phase=verified] .kiln-nft-link{order:2;margin:0 0 10px;display:flex;align-items:center;justify-content:center;min-height:50px;box-sizing:border-box;padding:14px 22px;border:1px solid #e8ca80;border-radius:30px;background:#efd087;color:#28271c;font:600 12px var(--sans);text-decoration:none;transition:background .2s,transform .2s}
+.kiln-page[data-mint-phase=verified] .kiln-nft-link:hover{background:#ffe7aa;transform:translateY(-1px)}
+.kiln-page[data-mint-phase=verified] .kiln-finished-actions{order:3}.kiln-page[data-mint-phase=verified] .kiln-keep{background:transparent;color:#d3c49c;border-color:#9a926b55;min-height:44px;padding:11px 18px}
+.kiln-page[data-mint-phase=verified] .kiln-keep:hover{background:#262c23}
+.kiln-page[data-mint-phase=verified] .kiln-nft-details{display:none}
+.kiln-piece-stamp{position:absolute;top:82px;left:14px;z-index:3;display:grid;grid-template-columns:1fr auto;gap:7px 18px;min-width:128px;padding:12px 14px;background:transparent;border-left:1px solid #bca16562;pointer-events:none}
+.kiln-piece-stamp span{grid-column:1/-1;color:#bda879;font:8px var(--mono);letter-spacing:.18em}.kiln-piece-stamp strong{font:500 15px var(--sans);color:#efdcac;letter-spacing:.02em}.kiln-piece-stamp small{align-self:center;color:#8e9e8a;font:8px var(--mono);letter-spacing:.12em}
+.kiln-mint-shine{position:absolute;inset:16% 17% 12%;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 44%,#fff1bf18 0,#e9c98308 40%,transparent 70%);mix-blend-mode:screen;transform:scale(.92)}
+.kiln-mint-halo{position:absolute;inset:10% 0 4%;pointer-events:none;background:radial-gradient(ellipse,#e5b54b1c 0,transparent 65%);opacity:0}
+.kiln-mint-celebrate .kiln-mint-shine{animation:kiln-seal-sweep 1.9s cubic-bezier(.22,.61,.36,1) both}
+.kiln-mint-celebrate .kiln-mint-halo{animation:kiln-seal-glow 2.4s ease both}
+.kiln-mint-celebrate .kiln-piece-stamp{animation:kiln-stamp-in .8s .5s cubic-bezier(.2,.65,.3,1) both}
+.kiln-mint-celebrate .kiln-mint-status{animation:kiln-receipt-in .7s ease both}
+.kiln-mint-celebrate .kiln-mint-status::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 30%,#fff0b91a 48%,transparent 65%);animation:kiln-certificate-light 1.8s .15s ease both}
+@keyframes kiln-seal-sweep{0%{opacity:0;transform:scale(.92)}25%{opacity:1}100%{opacity:0;transform:scale(1.06)}}
+@keyframes kiln-certificate-light{from{transform:translateX(-110%)}to{transform:translateX(110%)}}
+@keyframes kiln-seal-glow{0%,100%{opacity:0}38%{opacity:1}}
+@keyframes kiln-stamp-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes kiln-receipt-in{from{opacity:.55;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.kiln-mint-shine,.kiln-mint-halo,.kiln-mint-celebrate .kiln-mint-status::after{display:none}.kiln-mint-celebrate .kiln-piece-stamp,.kiln-mint-celebrate .kiln-mint-status{animation:none}.kiln-confirmation-meter i{transition:none}.kiln-page[data-mint-phase=verified] .kiln-nft-link:hover{transform:none}}
