@@ -74,7 +74,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   if(disposed||!enabled||!inView||document.hidden)return;
   const speed=Number.isFinite(rpm)?Math.max(0,rpm):0;
   const delta=Math.min(.1,Math.max(0,dt||0));
-  applyDemo(demo.step({dt:delta,rpm:speed,powered:lastSignal.state==='running',reducedMotion:motion.matches,currentAngle:preview?.presentationAngle}));
+  applyDemo(demo.step({dt:delta,rpm:speed,powered:lastSignal.state==='running',reducedMotion:motion.matches}));
   // 塑形阶段更新同一旋转体；上釉/刻印只更新 uniform。动力读数每秒最多更新四次。
   motionUiElapsed+=delta;if(motionUiElapsed<.25)return;motionUiElapsed%=.25;
   const signalStep=Math.round(Math.min(1,speed/10)*20);
@@ -96,7 +96,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
   const scale=`scaleX(${state.progress})`;if(rotor.style.transform!==scale)rotor.style.transform=scale;
   setAttribute(root,'data-demo-phase',state.phase);
   setAttribute(root,'data-demo-progress',state.progress.toFixed(4));
-  setAttribute(root,'data-engraving-phase',state.laserActive?'scan':state.phase==='complete'?'complete':state.phase);
+  setAttribute(root,'data-engraving-phase',state.laserActive?'scan':state.engravingPhase||state.phase);
   setAttribute(root,'data-reveal-complete',state.phase==='complete');
   put($('.home-step-number'),state.phase==='glaze'?'02':['engrave','complete'].includes(state.phase)?'03':'01');
   put(etchStatus,t(demoCaption()));
@@ -136,7 +136,7 @@ export function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onMo
  for(const button of modeButtons)listen(button,'click',()=>onModeChange(button.dataset.homeMode));
  for(const button of simButtons)listen(button,'click',()=>{if(lastSignal.mode==='sim')onSimChange(button.dataset.homeSim);});
  listen($('#home-enter'),'click',()=>onEnter());
- listen($('.home-replay'),'click',()=>{if(motion.matches)return;demo.reset(preview?.presentationAngle);applyDemo(demo.snapshot());});
+ listen($('.home-replay'),'click',()=>{if(motion.matches)return;demo.reset(preview?.presentationAngle,demoState.angularVelocity);applyDemo(demo.snapshot());});
  function renderSignal(){
   const simulated=lastSignal.mode==='sim',state=lastSignal.state,unknown=state==='unknown';
   setAttribute(root,'data-power-mode',lastSignal.mode);setAttribute(root,'data-wheel-state',state);if(simControls.hidden===simulated)simControls.hidden=!simulated;

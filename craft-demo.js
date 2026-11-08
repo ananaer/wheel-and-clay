@@ -1,8 +1,8 @@
-import {createEngravingSequence} from './engraving.js';
+import {createEngravingSequence,advanceWheelRotation} from './engraving.js';
 
 // 首页制作只消费主场景提供的时间和动力，不创建 RAF、计时器或页面节点。
 const CRAFT_PHASES=['clay','shape','glaze','engrave','complete'];
-const CRAFT_DURATIONS=[.4,3.2,1.7,.28+1.8+.65];
+const CRAFT_DURATIONS=[.4,3.2,1.7,.8+1.8+.65];
 const CRAFT_TOTAL=CRAFT_DURATIONS.reduce((sum,value)=>sum+value,0);
 const craftClamp=(value,min=0,max=1)=>Math.max(min,Math.min(max,value));
 const craftSmooth=value=>{const t=craftClamp(value);return t*t*(3-2*t);};
@@ -32,7 +32,7 @@ export function createCraftDemo({count=129}={}){
  const size=Number.isInteger(count)&&count>=2&&count<=1025?count:129;
  const clay=Object.freeze(Array.from({length:size},(_,index)=>.56+.035*Math.sin(Math.PI*index/(size-1))));
  const finished=craftFinishedProfile(size),engraving=createEngravingSequence();
- let phaseIndex=0,phaseElapsed=0,engraveElapsed=0,lastAngle=0,profile=clay,laserActive=false;
+ let phaseIndex=0,phaseElapsed=0,engraveElapsed=0,rotation=0,angularVelocity=0,profile=clay,laserActive=false,reduced=false;
  let engravingState=engraving.snapshot(),lastShapeProgress=-1;
 
  function updateProfile(){
@@ -57,52 +57,50 @@ export function createCraftDemo({count=129}={}){
    profile,heightScale:phaseIndex===0?.72:phaseIndex>=2?1:.72+.28*craftSmooth(phaseProgress),
    glazeProgress:phaseIndex<2?0:phaseIndex===2?craftSmooth(phaseProgress):1,
    laserProgress:phaseIndex<3?0:phaseIndex===3?engravingState.progress:1,
-   laserActive,rotation:phaseIndex===3?engravingState.rotation:null,
+   laserActive,rotation,angularVelocity,engravingPhase:phaseIndex>=3?engravingState.phase:null,
    toolHeight:phaseIndex===1?craftClamp((phaseProgress-.14)/.72,.04,.98):null
   });
  }
 
- function reset(currentAngle=0){
+ function reset(currentAngle=rotation,currentVelocity=angularVelocity){
   phaseIndex=0;phaseElapsed=0;engraveElapsed=0;lastShapeProgress=-1;profile=clay;laserActive=false;
-  lastAngle=Number.isFinite(currentAngle)?currentAngle:0;
-  engravingState=engraving.reset(lastAngle);
+  rotation=Number.isFinite(currentAngle)?currentAngle:0;
+  angularVelocity=Number.isFinite(currentVelocity)?Math.max(0,currentVelocity):0;reduced=false;
+  engravingState=engraving.reset(rotation,angularVelocity);
   return snapshot();
  }
 
- // 仅记录刻印的名义工时来绘制总进度；真正的朝向、印记与激光由原刻印器控制。
- function advanceEngravingClock(seconds,rate){
-  let remaining=seconds;
-  for(const [end,speed] of [[.28,1],[.28+1.8,rate],[CRAFT_DURATIONS[3],1]]){
-   if(remaining<=0||engraveElapsed>=end)continue;
-   const used=Math.min(remaining,(end-engraveElapsed)/speed);
-   engraveElapsed=Math.min(end,engraveElapsed+used*speed);remaining-=used;
-  }
- }
-
- function step({dt,rpm,powered=true,reducedMotion=false,currentAngle}={}){
+ // 展示角只由此序列持有：阶段切换、完成和重播都不交回一个已在后台高速转动的角。
+ function step({dt,rpm,powered=true,reducedMotion=false}={}){
   laserActive=false;
-  if(Number.isFinite(currentAngle))lastAngle=currentAngle;
   if(reducedMotion){
-   phaseIndex=4;phaseElapsed=0;engraveElapsed=CRAFT_DURATIONS[3];profile=finished;
-   engravingState=engraving.step({reducedMotion:true});
+   reduced=true;phaseIndex=4;phaseElapsed=0;engraveElapsed=CRAFT_DURATIONS[3];profile=finished;angularVelocity=0;
+   engraving.reset(rotation,0);engravingState=engraving.step({reducedMotion:true});
    return snapshot();
   }
-  if(phaseIndex===4||!powered||!Number.isFinite(rpm)||rpm<=0||!Number.isFinite(dt)||dt<=0)return snapshot();
+  if(reduced||!Number.isFinite(dt)||dt<=0)return snapshot();
+  const motorRpm=Number.isFinite(rpm)&&rpm>0?rpm:0;
   let remaining=Math.min(dt,.1);
-  const rate=Math.min(rpm/18,2.5);
-  // 边界保留本帧余量；不同帧率走过相同工时应得到相同器形和印记。
-  while(remaining>0&&phaseIndex<3){
+  const canWork=powered&&motorRpm>0,rate=Math.min(motorRpm/18,2.5);
+  if(phaseIndex<3&&!canWork){
+   ({rotation,angularVelocity}=advanceWheelRotation(rotation,angularVelocity,motorRpm,remaining));return snapshot();
+  }
+  while(remaining>1e-12&&phaseIndex<3){
    const duration=CRAFT_DURATIONS[phaseIndex],used=Math.min(remaining,Math.max(0,duration-phaseElapsed)/rate);
+   ({rotation,angularVelocity}=advanceWheelRotation(rotation,angularVelocity,motorRpm,used));
    phaseElapsed=Math.min(duration,phaseElapsed+used*rate);remaining-=used;
    if(phaseElapsed>=duration-1e-12){
     phaseIndex++;phaseElapsed=0;
-    if(phaseIndex===3){engraveElapsed=0;engravingState=engraving.reset(lastAngle);}
+    if(phaseIndex===3){engraveElapsed=0;engravingState=engraving.reset(rotation,angularVelocity);}
    }
   }
-  if(phaseIndex===3&&remaining>0){
-   engravingState=engraving.step({dt:remaining,rpm,powered:true});
-   advanceEngravingClock(remaining,rate);laserActive=engravingState.active;
-   if(engravingState.phase==='complete'){phaseIndex=4;phaseElapsed=0;engraveElapsed=CRAFT_DURATIONS[3];laserActive=false;}
+  if(phaseIndex>=3&&remaining>1e-12){
+   engravingState=engraving.step({dt:remaining,rpm:motorRpm,powered:canWork});
+   rotation=engravingState.rotation;angularVelocity=engravingState.angularVelocity;laserActive=engravingState.active;
+   // 总进度跟随实际对正与扫描阶段，不再假定任意朝向都能在 0.28 秒完成。
+   const stage=engravingState.phase;
+   engraveElapsed=stage==='align'?.8*engravingState.alignProgress:stage==='scan'?.8+1.8*engravingState.progress:stage==='hold'?.8+1.8+.65*engravingState.holdProgress:CRAFT_DURATIONS[3];
+   if(stage==='complete'){phaseIndex=4;phaseElapsed=0;laserActive=false;}
   }
   updateProfile();return snapshot();
  }

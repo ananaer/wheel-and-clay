@@ -3,19 +3,28 @@ import {getGlaze,getSurface,materialFor} from './glazes.js';
 
 /* 真正的可编辑旋转体，不使用预渲染器物图片。 */
 export function createStudio(canvas,callbacks={}){
- const P=window.Pottery,scene=new THREE.Scene(),presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true,heroLaser=animatedPreview&&callbacks.heroLaser===true&&!!callbacks.sealUrl,heroCraft=heroLaser&&callbacks.heroCraft===true;
+ const P=window.Pottery,scene=new THREE.Scene(),filmCapture=callbacks.filmCapture===true,presentationOnly=callbacks.presentationOnly===true,animatedPreview=callbacks.animatedPreview===true,heroLaser=animatedPreview&&callbacks.heroLaser===true&&!!callbacks.sealUrl,heroCraft=heroLaser&&callbacks.heroCraft===true;
  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:callbacks.transparentBackground===true,preserveDrawingBuffer:true,powerPreference:'high-performance'});
- renderer.setPixelRatio(Math.min(devicePixelRatio,1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
+ renderer.setPixelRatio(filmCapture?1:Math.min(devicePixelRatio,1.8));renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.18;
  // 固定光源下的旋转体轮廓基本不变；重塑时再刷新阴影，避免每帧重复阴影通道。
  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.setClearColor(callbacks.background||'#eae8e1',callbacks.transparentBackground===true?0:1);
- const camera=new THREE.PerspectiveCamera(33,1,.05,60),look=new THREE.Vector3(0,1.67,0),clock=new THREE.Clock(),raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
+ const camera=new THREE.PerspectiveCamera(33,1,.05,60),look=new THREE.Vector3(0,1.67,0),raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
  let sceneReady=false,drawing=false,needsRender=true,needsShadow=true,pendingHover=null;
  const entranceDuration=animatedPreview&&callbacks.presentationEntrance===true&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?1:0;
  let entranceTime=0,presentationScale=1,baseCameraDistance=7.5,cameraDistance=baseCameraDistance*(entranceDuration?1.04:1);
  let values=P.profile(),kind='vase',phase='shape',glaze='jade',surface='glossy',finish=.72,rpm=0,targetRpm=18,angle=0,drag=null,orbit=.28,tilt=.24,visible=true,disposed=false,frame=0,elapsed=0,changed=true,hoverHeight=.55,brushRadius=.13;
- let presentationRotation=null,presentationOffset=0;
+ let presentationRotation=null,presentationOffset=0,lastFrameNow=null,renderedFrames=0;
+ // 以浏览器给出的展示帧时间积分。不能用回调实际执行的墙钟：同一帧内的任务延迟
+ // 会把稳定的 16.7ms 帧误算成 43ms / 0.5ms，产生视觉上的冲刺与补偿。
+ function consumeFrameTime(now){
+  const valid=Number.isFinite(now),rawDt=valid&&lastFrameNow!==null?Math.max(0,(now-lastFrameNow)/1000):0;
+  if(valid&&(lastFrameNow===null||now>=lastFrameNow))lastFrameNow=now;
+  return {dt:Math.min(rawDt,.1),rawDt};
+ }
+ const resetFrameClock=()=>{lastFrameNow=null;};
+ document.addEventListener?.('visibilitychange',resetFrameClock);
  // 静态预览按需绘制；动态首页与工作台保留连续物理时钟。
- function invalidate(shadow=false){needsRender=true;needsShadow ||= shadow;if(presentationOnly&&sceneReady&&visible&&!disposed&&!drawing&&!frame)frame=requestAnimationFrame(draw);}
+ function invalidate(shadow=false){needsRender=true;needsShadow ||= shadow;if(!filmCapture&&presentationOnly&&sceneReady&&visible&&!disposed&&!drawing&&!frame)frame=requestAnimationFrame(draw);}
  const H=()=>kind==='bowl'?1.78:P.HEIGHT;
  const setCamera=()=>{camera.position.set(Math.sin(orbit)*cameraDistance,1.67+Math.sin(tilt)*cameraDistance,Math.cos(orbit)*cameraDistance);camera.lookAt(look);invalidate();};setCamera();
  const room=new THREE.Scene();room.background=new THREE.Color('#7f827a');
@@ -79,7 +88,9 @@ export function createStudio(canvas,callbacks={}){
  // 只在首页显影中使用片元遮罩；数值更新不会重建器形或触发阴影重算。
  const heroReveal=animatedPreview&&callbacks.heroReveal===true,glazeReveal={value:1};canvas.dataset.glazeReveal='1.0000';
  // 品牌概念可指定原始透明 SVG 为窑印；不传时保留工作台现有爪印。
- const brandSeal=callbacks.sealUrl?new THREE.TextureLoader().load(callbacks.sealUrl,()=>invalidate()):null;
+ let resolveFilmAsset,rejectFilmAsset;
+ const filmAssetsReady=filmCapture&&callbacks.sealUrl?new Promise((resolve,reject)=>{resolveFilmAsset=resolve;rejectFilmAsset=reject;}):Promise.resolve();
+ const brandSeal=callbacks.sealUrl?new THREE.TextureLoader().load(callbacks.sealUrl,()=>{invalidate();resolveFilmAsset?.();},undefined,filmCapture?error=>rejectFilmAsset?.(error):undefined):null;
  const laserProgress={value:1},laserActive={value:0},laserPixelRatio={value:renderer.getPixelRatio()};
  canvas.dataset.laserProgress='1.0000';canvas.dataset.laserActive='false';
  function turningSurface(mat,glazed){const revealEnabled=glazed&&heroReveal,laserEnabled=glazed&&heroLaser;mat.onBeforeCompile=shader=>{
@@ -248,33 +259,40 @@ export function createStudio(canvas,callbacks={}){
  canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('lostpointercapture',up);canvas.addEventListener('pointerleave',()=>{pendingHover=null;if(!drag)guide.visible=false;});
  const renderSize=new THREE.Vector2();
  function resizeCanvas(){const size=presentationOnly?{width:canvas.clientWidth,height:canvas.clientHeight}:canvas.getBoundingClientRect(),width=size.width,height=size.height;if(!width||!height)return;renderer.getSize(renderSize);const resized=renderSize.x!==width||renderSize.y!==height,aspectChanged=camera.aspect!==width/height;if(resized)renderer.setSize(width,height,false);if(aspectChanged){camera.aspect=width/height;camera.updateProjectionMatrix();}if(resized||aspectChanged)invalidate();}
- const resizer=new ResizeObserver(resizeCanvas);resizer.observe(canvas);
+ const resizer=filmCapture?null:new ResizeObserver(resizeCanvas);resizer?.observe(canvas);
  rebuild();let ready=false;
- function recordFrame(){const state={wheelAngle:(angle%(Math.PI*2)).toFixed(5),motorRpm:rpm.toFixed(3),touchPressure:(drag?.pressure||0).toFixed(4),middleRadius:radiusAt(.5).toFixed(6)};for(const key in state)if(canvas.dataset[key]!==state[key])canvas.dataset[key]=state[key];if(!ready){ready=true;callbacks.onReady?.();}}
+ function recordFrame(now,dt,rawDt,started,clockMode='raf'){
+  const ended=performance.now();
+  const state={wheelAngle:(angle%(Math.PI*2)).toFixed(5),motorRpm:rpm.toFixed(3),touchPressure:(drag?.pressure||0).toFixed(4),middleRadius:radiusAt(.5).toFixed(6),frameSerial:String(++renderedFrames),frameClock:clockMode,frameNow:now.toFixed(3),frameDt:dt.toFixed(6),frameRawDt:rawDt.toFixed(6),framePerfStart:started.toFixed(3),framePerfEnd:ended.toFixed(3)};
+  for(const key in state)if(canvas.dataset[key]!==state[key])canvas.dataset[key]=state[key];
+  if(!ready){ready=true;callbacks.onReady?.();}
+ }
  function renderScene(){if(heroLaser)laserPixelRatio.value=renderer.getPixelRatio();renderer.shadowMap.needsUpdate=needsShadow;needsShadow=false;renderer.render(scene,camera);}
- function reportFrame(now,started){callbacks.onFrame?.({now,renderMs:performance.now()-started,phase,visible,drawCalls:renderer.info?.render?.calls??0,triangles:renderer.info?.render?.triangles??0});}
+ function reportFrame(now,started,dt,rawDt){callbacks.onFrame?.({now,dt,rawDt,frameSerial:renderedFrames,presentationAngle:rotor.rotation.y,motorRpm:rpm,renderMs:performance.now()-started,phase,visible,drawCalls:renderer.info?.render?.calls??0,triangles:renderer.info?.render?.triangles??0});}
  function drawPresentation(now){
   frame=0;if(disposed||!visible)return;drawing=true;
-  const started=performance.now();let animate=false;
+  const started=performance.now(),{dt,rawDt}=consumeFrameTime(now);let animate=false;
   try{
    // 返回 true 可让调用方的镜头缓动继续；停止后不再请求空白帧。
-   animate=callbacks.onTick?.(0,Math.min(clock.getDelta(),.1))===true;
+   animate=callbacks.onTick?.(0,dt)===true;
    if(changed){rebuild();needsRender=true;needsShadow=true;}
-   if(needsRender){needsRender=false;targetGuide.rotation.y=orbit;renderScene();recordFrame();reportFrame(now,started);}
-  }finally{drawing=false;if(!disposed&&visible&&(animate||needsRender)&&!frame)frame=requestAnimationFrame(draw);}
+   if(needsRender){needsRender=false;targetGuide.rotation.y=orbit;renderScene();recordFrame(now,dt,rawDt,started);reportFrame(now,started,dt,rawDt);}
+  }finally{drawing=false;if(!disposed&&visible&&(animate||needsRender)&&!frame)frame=requestAnimationFrame(draw);else if(!frame)resetFrameClock();}
  }
  function draw(now){
   if(presentationOnly){drawPresentation(now);return;}frame=0;if(disposed||!visible)return;
-  const started=performance.now(),dt=Math.min(clock.getDelta(),.1);elapsed+=dt;
+  const started=performance.now(),{dt,rawDt}=consumeFrameTime(now);elapsed+=dt;
   if(entranceTime<entranceDuration){entranceTime=Math.min(entranceDuration,entranceTime+dt);cameraDistance=baseCameraDistance*(1+.04*(1-entranceTime/entranceDuration)**3);setCamera();}
   rpm=P.stepMotor(rpm,targetRpm,dt);if(rpm<.015)rpm=0;updateHover();shapeUnderTouch(dt);angle+=rpm/60*Math.PI*2*dt;updatePresentationRotation();targetGuide.rotation.y=orbit;
-  if(changed){rebuild();needsShadow=true;}needsRender=false;renderScene();recordFrame();callbacks.onTick?.(rpm,dt);reportFrame(now,started);
+  // 首页制作在渲染前推进，避免每个阶段晚一帧显示；工作台保留原有回调时序。
+  if(animatedPreview)callbacks.onTick?.(rpm,dt);
+  if(changed){rebuild();needsShadow=true;}needsRender=false;renderScene();recordFrame(now,dt,rawDt,started);if(!animatedPreview)callbacks.onTick?.(rpm,dt);reportFrame(now,started,dt,rawDt);
   if(!disposed&&visible&&!frame)frame=requestAnimationFrame(draw);
  }
  // 只在工作台构造期预热：在首页动画建立前完成着色器、缓冲和阴影首次绘制。
  // 不读物理时钟、不触发游戏/就绪/验收回调；真正可见的首帧仍按正常 RAF 绘制。
  if(callbacks.prewarm===true&&!presentationOnly&&!animatedPreview){resizeCanvas();renderer.compile(scene,camera);renderScene();}
- sceneReady=true;callbacks.onVisibility?.(visible,performance.now());if(presentationOnly)invalidate(true);else frame=requestAnimationFrame(draw);
+ sceneReady=true;callbacks.onVisibility?.(visible,performance.now());if(!filmCapture){if(presentationOnly)invalidate(true);else frame=requestAnimationFrame(draw);}
  function setMaterial(){
   invalidate(true);
   const spec=materialFor(glaze,surface,finish);
@@ -284,6 +302,24 @@ export function createStudio(canvas,callbacks={}){
   canvas.dataset.glaze=glaze;canvas.dataset.surface=surface;canvas.dataset.material=phase==='shape'?'clay':'ceramic';
  }
  return {
+  filmAssetsReady,
+  // 仅本地影片工具启用：不读墙钟、不创建 RAF，保证每张图片对应调用方指定的同一时间。
+  renderFilmFrame({dt=1/60,width=1440,height=1440,motorRpm=18,wheelAngle,timeSeconds}={}){
+   if(!filmCapture)throw new Error('Film rendering requires the explicit filmCapture option.');
+   if(disposed)throw new Error('Film renderer has been disposed.');
+   if(!Number.isFinite(dt)||dt<0||dt>.1)throw new RangeError('Film dt must be between 0 and 0.1 seconds.');
+   if(!Number.isInteger(width)||!Number.isInteger(height)||width<64||height<64||width>4096||height>4096)throw new RangeError('Film dimensions must be integers from 64 to 4096.');
+   if(timeSeconds!==undefined&&(!Number.isFinite(timeSeconds)||timeSeconds<0))throw new RangeError('Film time must be a finite non-negative number.');
+   const started=performance.now();
+   renderer.getSize(renderSize);if(renderSize.x!==width||renderSize.y!==height)renderer.setSize(width,height,false);
+   if(camera.aspect!==width/height){camera.aspect=width/height;camera.updateProjectionMatrix();}
+   rpm=Number.isFinite(motorRpm)?P.clamp(motorRpm,0,90):0;targetRpm=rpm;elapsed=timeSeconds??elapsed+dt;
+   angle=Number.isFinite(wheelAngle)?wheelAngle:angle+rpm/60*Math.PI*2*dt;
+   updatePresentationRotation();guide.visible=false;targetGuide.visible=false;
+   if(changed){rebuild();needsShadow=true;}needsRender=false;renderScene();recordFrame(elapsed*1000,dt,dt,started,'film');
+   const result={elapsed,dt,rpm,wheelAngle:angle,presentationAngle:rotor.rotation.y,width,height,renderMs:performance.now()-started,drawCalls:renderer.info?.render?.calls??0};
+   return Object.freeze(result);
+  },
   setProfile(v,type=kind){values=v.slice();kind=type;changed=true;invalidate(true);},setRpm(v){targetRpm=Number.isFinite(v)?P.clamp(v,0,90):0;},get rpm(){return rpm;},get frame(){return frame;},
   setTarget,setPhase(next){up();pendingHover=null;phase=next;guide.visible=false;targetGuide.visible=targetActive&&phase==='shape';setMaterial();},setGlaze(next){glaze=getGlaze(next).id;setMaterial();},setSurface(next){surface=getSurface(next).id;setMaterial();},setFinish(v){finish=v;setMaterial();},setBrush(v){brushRadius=v;},setGuide(v){guideAt(v);},hideGuide(){guide.visible=false;invalidate();},
   setPresentationView(nextOrbit,nextTilt){const nextYaw=Number.isFinite(nextOrbit)?nextOrbit:orbit,nextPitch=Number.isFinite(nextTilt)?P.clamp(nextTilt,-.02,.9):tilt;if(Math.abs(nextYaw-orbit)<1e-7&&Math.abs(nextPitch-tilt)<1e-7)return;orbit=nextYaw;tilt=nextPitch;setCamera();},
@@ -295,13 +331,13 @@ export function createStudio(canvas,callbacks={}){
   setGlazeReveal(value){if(!heroReveal||!Number.isFinite(value))return;const next=P.clamp(value,0,1);if(next===glazeReveal.value)return;glazeReveal.value=next;canvas.dataset.glazeReveal=next.toFixed(4);invalidate();},
   setLaserEngraving(progress,active){if(!heroLaser)return;const nextProgress=Number.isFinite(progress)?P.clamp(progress,0,1):laserProgress.value,nextActive=typeof active==='boolean'?(active?1:0):laserActive.value;if(nextProgress===laserProgress.value&&nextActive===laserActive.value)return;laserProgress.value=nextProgress;laserActive.value=nextActive;canvas.dataset.laserProgress=nextProgress.toFixed(4);canvas.dataset.laserActive=String(nextActive===1);invalidate();},
   orbitView(deltaOrbit=0,deltaTilt=0){if(Number.isFinite(deltaOrbit))orbit+=deltaOrbit;if(Number.isFinite(deltaTilt))tilt=P.clamp(tilt+deltaTilt,-.02,.9);setCamera();},
-  resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const next=!!v;if(visible===next)return;visible=next;clock.getDelta();callbacks.onVisibility?.(visible,performance.now());if(!visible){up();pendingHover=null;guide.visible=false;cancelAnimationFrame(frame);frame=0;}else if(presentationOnly)invalidate();else if(!frame)frame=requestAnimationFrame(draw);},
+  resetView(){orbit=.28;tilt=.24;setCamera();},setVisible(v){const next=!!v;if(visible===next)return;visible=next;resetFrameClock();callbacks.onVisibility?.(visible,performance.now());if(!visible){up();pendingHover=null;guide.visible=false;cancelAnimationFrame(frame);frame=0;}else if(!filmCapture){if(presentationOnly)invalidate();else if(!frame)frame=requestAnimationFrame(draw);}},
   capture(width=1000,height=1100){
    const oldSize=renderer.getSize(new THREE.Vector2()),oldRatio=renderer.getPixelRatio(),oldAspect=camera.aspect,oldOrbit=orbit,oldTilt=tilt,oldGuide=guide.visible,oldRotor=rotor.rotation.y,oldDistance=cameraDistance,oldLaserProgress=laserProgress.value,oldLaserActive=laserActive.value;
    // 导出只调整展示朝向，不写入物理 angle；无论截图成败都恢复正在运行的转盘。
    try{guide.visible=false;orbit=.28;tilt=.24;rotor.rotation.y=0;laserProgress.value=1;laserActive.value=0;cameraDistance=7.5;setCamera();renderer.setPixelRatio(1);renderer.setSize(width,height,false);camera.aspect=width/height;camera.updateProjectionMatrix();if(changed){rebuild();needsShadow=true;}renderScene();return canvas.toDataURL('image/png');}
    finally{camera.aspect=oldAspect;camera.updateProjectionMatrix();orbit=oldOrbit;tilt=oldTilt;rotor.rotation.y=oldRotor;laserProgress.value=oldLaserProgress;laserActive.value=oldLaserActive;cameraDistance=oldDistance;setCamera();guide.visible=oldGuide;renderer.setPixelRatio(oldRatio);renderer.setSize(oldSize.x,oldSize.y,false);renderScene();}
   },
-  dispose(){disposed=true;cancelAnimationFrame(frame);resizer.disconnect();renderer.dispose();env.dispose();scene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});bump.dispose();plateTex.dispose();dialTexture.dispose();brandSeal?.dispose();},
+  dispose(){disposed=true;document.removeEventListener?.('visibilitychange',resetFrameClock);cancelAnimationFrame(frame);resizer?.disconnect();renderer.dispose();env.dispose();scene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const mats=Array.isArray(o.material)?o.material:[o.material];mats.forEach(m=>m.dispose());}});bump.dispose();plateTex.dispose();dialTexture.dispose();brandSeal?.dispose();},
  };
 }

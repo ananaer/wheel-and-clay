@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createRequire} from 'node:module';
 import * as Three from '../vendor/three.module.min.js';
+import {createCraftDemo} from '../craft-demo.js';
 const require=createRequire(import.meta.url),Pottery=require('../engine.js');
 let nextFrame=0,total=0,frameTime=0,clockReads=0;
 const frames=new Map(),renderers=[],environmentRooms=[];
 globalThis.window={Pottery};globalThis.devicePixelRatio=2;
 globalThis.requestAnimationFrame=callback=>{const id=++nextFrame;frames.set(id,callback);return id;};
 globalThis.cancelAnimationFrame=id=>frames.delete(id);
-function step(){const first=frames.entries().next().value;assert.ok(first,'expected a pending frame');frames.delete(first[0]);frameTime+=16;first[1](frameTime);}
+function step(milliseconds=16){const first=frames.entries().next().value;assert.ok(first,'expected a pending frame');frames.delete(first[0]);frameTime+=milliseconds;first[1](frameTime);}
 function context2d(){return new Proxy({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)}),createRadialGradient:()=>({addColorStop(){}})},{get:(target,key)=>key in target?target[key]:()=>{}});}
 function canvas(){const listeners={};return {width:640,height:480,clientWidth:640,clientHeight:480,dataset:{},style:{},getContext:()=>context2d(),addEventListener(type,callback){(listeners[type]??=[]).push(callback);},emit(type,event={}){for(const callback of listeners[type]||[])callback(event);},getBoundingClientRect:()=>({width:640,height:480,left:0,top:0}),hasPointerCapture:()=>false,toDataURL:()=> 'data:image/png;base64,test'};}
 globalThis.document={createElement:()=>canvas(),body:{dataset:{}}};
@@ -79,7 +80,7 @@ check('工作台构造时预热真实画布，不推进游戏或冒充可见首�
  assert.equal(r.compiles,1);assert.equal(r.renders,1);assert.equal(r.shadows,1);assert.deepEqual(r.compiledSize.toArray(),[820,600]);assert.equal(r.compiledAspect,820/600);assert.equal(clockReads,beforeReads);assert.equal(scene.rpm,0);assert.equal(ticks,0);assert.equal(ready,0);assert.equal(samples.length,0);
  const body=r.world.children.find(child=>child.isGroup),rotor=body.children.find(child=>child.isGroup);assert.equal(rotor.rotation.y,0);assert.equal(node.dataset.wheelAngle,undefined);
  scene.setVisible(false);assert.equal(frames.size,0);assert.equal(r.renders,1);scene.setRpm(18);scene.setVisible(true);step();
- assert.equal(r.compiles,1);assert.equal(r.renders,2);assert.equal(r.shadows,1);assert.equal(ticks,1);assert.equal(ready,1);assert.equal(samples.length,1);assert.equal(samples[0].now,frameTime);assert.ok(rotor.rotation.y>0);
+ assert.equal(r.compiles,1);assert.equal(r.renders,2);assert.equal(r.shadows,1);assert.equal(ticks,1);assert.equal(ready,1);assert.equal(samples.length,1);assert.equal(samples[0].now,frameTime);assert.equal(rotor.rotation.y,0);assert.equal(samples[0].dt,0);
  scene.setVisible(false);scene.setVisible(true);step();assert.equal(r.compiles,1);assert.equal(ready,1);assert.equal(ticks,2);scene.dispose();
 });
 check('预热选项不改变静态或动态首页的原有入口',()=>{
@@ -118,7 +119,7 @@ check('刻印首页仅收敛前三处固定反光，游戏与无印章首页的�
  const studio=inspect({}),ignored=inspect({heroLaser:true,sealUrl:'fixture:seal'});for(let i=0;i<studio.length;i++)assert.ok(studio[i].equals(ignored[i]));
 });
 check('可选首页镜头在一秒内轻推收敛，减少动态效果偏好会关闭',()=>{
- window.matchMedia=()=>({matches:false});let scene=createStudio(canvas(),{animatedPreview:true,presentationEntrance:true}),r=renderers.at(-1);step();const initial=r.camera.x/Math.sin(.28);assert.ok(initial>7.5&&initial<7.8);for(let i=0;i<63;i++)step();assert.ok(Math.abs(r.camera.x-Math.sin(.28)*7.5)<1e-10);scene.dispose();
+ window.matchMedia=()=>({matches:false});let scene=createStudio(canvas(),{animatedPreview:true,presentationEntrance:true}),r=renderers.at(-1);step();const initial=r.camera.x/Math.sin(.28);assert.ok(initial>7.5&&initial<=7.8+1e-10);for(let i=0;i<63;i++)step();assert.ok(Math.abs(r.camera.x-Math.sin(.28)*7.5)<1e-10);scene.dispose();
  window.matchMedia=()=>({matches:true});scene=createStudio(canvas(),{animatedPreview:true,presentationEntrance:true});r=renderers.at(-1);step();assert.ok(Math.abs(r.camera.x-Math.sin(.28)*7.5)<1e-10);scene.dispose();delete window.matchMedia;
 });
 
@@ -185,7 +186,7 @@ check('工作台及静态预览忽略展示高度，不改变游戏器形或唤�
 });
 check('首页入场尊重展示缩放，截图成功或失败后恢复缩放并继续原有入场',()=>{
  window.matchMedia=()=>({matches:false});const node=canvas(),scene=createStudio(node,{animatedPreview:true,presentationEntrance:true,heroReveal:true}),r=renderers.at(-1);
- scene.setPhase('glaze');scene.setGlazeReveal(.28);scene.setPresentationScale(1.2);scene.setPresentationView(.65,.18);step();const firstDistance=r.camera.x/Math.sin(.65),before=r.camera.clone();assert.ok(firstDistance>7.5/1.2&&firstDistance<7.8/1.2);
+ scene.setPhase('glaze');scene.setGlazeReveal(.28);scene.setPresentationScale(1.2);scene.setPresentationView(.65,.18);step();const firstDistance=r.camera.x/Math.sin(.65),before=r.camera.clone();assert.ok(firstDistance>7.5/1.2&&firstDistance<=7.8/1.2+1e-10);
  node.toDataURL=()=>{assert.ok(Math.abs(r.camera.x-Math.sin(.28)*7.5)<1e-10);return 'data:image/png;base64,scaled';};assert.equal(scene.capture(),'data:image/png;base64,scaled');assert.deepEqual(r.camera.toArray(),before.toArray());assert.equal(node.dataset.glazeReveal,'0.2800');
  const failure=new Error('fixture: scaled capture failed');node.toDataURL=()=>{throw failure;};assert.throws(()=>scene.capture(),error=>error===failure);assert.deepEqual(r.camera.toArray(),before.toArray());step();assert.ok(r.camera.x/Math.sin(.65)<firstDistance);assert.ok(r.camera.x/Math.sin(.65)>7.5/1.2);
  scene.setPresentationScale(1.1);for(let i=0;i<63;i++)step();assert.ok(Math.abs(r.camera.x-Math.sin(.65)*7.5/1.1)<1e-10);assert.equal(node.dataset.glazeReveal,'0.2800');scene.dispose();delete window.matchMedia;
@@ -299,5 +300,57 @@ check('截图编码失败仍恢复正在运行的转盘和镜头，不清零真�
  assert.deepEqual(r.getSize(new Three.Vector2()).toArray(),size.toArray());assert.equal(r.getPixelRatio(),ratio);
  const expected=rotation+Pottery.stepMotor(rpm,42,.016)/60*Math.PI*2*.016;step();assert.ok(Math.abs(rotor.rotation.y-expected)<1e-12);
  scene.dispose();
+});
+check('真实首页逐帧渲染实际制作角：回调先于绘制，转速在工序交接处连续',()=>{
+ const node=canvas(),demo=createCraftDemo();let state=demo.snapshot(),scene;
+ scene=createStudio(node,{animatedPreview:true,onTick(rpm,dt){state=demo.step({dt,rpm,powered:true});scene.setPresentationRotation(state.rotation);}});
+ const r=renderers.at(-1),originalRender=r.render.bind(r);let displayed=0;
+ r.render=(world,camera)=>{const body=world.children.find(child=>child.isGroup),rotor=body.children.find(child=>child.isGroup);displayed=rotor.rotation.y;originalRender(world,camera);};
+ scene.setRpm(18);scene.setPresentationRotation(0);let previous=0,previousSpeed=0;const stages=new Set();
+ for(let index=0;index<1100;index++){
+  step();assert.equal(displayed,state.rotation,'不能先绘制旧角再更新制作状态');
+  const speed=(displayed-previous)/.016;assert.ok(speed>=-1e-8);assert.ok(speed<=18/60*Math.PI*2+1e-8);assert.ok(Math.abs(speed-previousSpeed)<.065,'实际呈现角速度不能突变');
+  stages.add(state.phase);previous=displayed;previousSpeed=speed;
+ }
+ assert.equal(stages.size,5);assert.equal(state.phase,'complete');scene.dispose();
+});
+check('真实首页扫描时切休息立即灭光且保留进度，恢复不追补停机时间',()=>{
+ const demo=createCraftDemo();let state=demo.snapshot(),scene,powered=true;
+ scene=createStudio(canvas(),{animatedPreview:true,onTick(rpm,dt){state=demo.step({dt,rpm,powered});scene.setPresentationRotation(state.rotation);}});scene.setRpm(18);
+ for(let index=0;index<1000&&state.engravingPhase!=='scan';index++)step();
+ assert.equal(state.engravingPhase,'scan');const progress=state.laserProgress,rotation=state.rotation;
+ powered=false;scene.setRpm(0);for(let index=0;index<200;index++){step();assert.equal(state.laserActive,false);assert.equal(state.laserProgress,progress);assert.equal(state.rotation,rotation);}
+ powered=true;scene.setRpm(18);step();assert.equal(state.laserActive,true);assert.ok(state.laserProgress>progress);assert.ok(state.laserProgress-progress<.01);scene.dispose();
+});
+check('回调墙钟抖动43.4/0.5/6ms不能改变稳定RAF的积分时长和实际旋转',()=>{
+ const originalPerformance=globalThis.performance;let wallNow=1000;globalThis.performance={now:()=>wallNow};
+ const node=canvas(),ticks=[],scene=createStudio(node,{animatedPreview:true,onTick:(rpm,dt)=>ticks.push({rpm,dt})});scene.setRpm(18);
+ try{
+  step(16.6);assert.equal(ticks[0].dt,0);assert.equal(node.dataset.frameDt,'0.000000');const initialReads=clockReads;
+  let previousAngle=scene.presentationAngle,previousRpm=scene.rpm;
+  for(const wallDelta of [43.4,.5,6,20.4,13.2,80,.1]){
+   wallNow+=wallDelta;step(16.6);
+   const sample=ticks.at(-1),expectedRpm=Pottery.stepMotor(previousRpm,18,.0166),expectedAngle=previousAngle+expectedRpm/60*Math.PI*2*.0166;
+   assert.ok(Math.abs(sample.dt-.0166)<1e-10);assert.ok(Math.abs(scene.presentationAngle-expectedAngle)<1e-10);
+   assert.equal(node.dataset.frameDt,'0.016600');assert.equal(node.dataset.frameRawDt,'0.016600');assert.equal(node.dataset.frameClock,'raf');assert.equal(Number(node.dataset.frameNow),Number(frameTime.toFixed(3)));assert.equal(Number(node.dataset.framePerfStart),Number(wallNow.toFixed(3)));assert.equal(Number(node.dataset.frameSerial),ticks.length);
+   previousAngle=scene.presentationAngle;previousRpm=scene.rpm;
+  }
+  assert.equal(clockReads,initialReads,'不得回退到THREE墙钟积分');
+ }finally{scene.dispose();globalThis.performance=originalPerformance;}
+});
+check('真正的长RAF间隔保留证据，隐藏恢复首帧不补跑后台时间',()=>{
+ const node=canvas(),samples=[],scene=createStudio(node,{animatedPreview:true,onFrame:sample=>samples.push(sample)});scene.setRpm(18);step();step();
+ step(64);assert.equal(node.dataset.frameDt,'0.064000');assert.equal(node.dataset.frameRawDt,'0.064000');assert.ok(Math.abs(samples.at(-1).rawDt-.064)<1e-10);
+ step(1200);assert.equal(node.dataset.frameDt,'0.100000');assert.equal(node.dataset.frameRawDt,'1.200000');assert.ok(Math.abs(samples.at(-1).rawDt-1.2)<1e-10);
+ const angle=scene.presentationAngle,rpm=scene.rpm;scene.setVisible(false);frameTime+=60000;scene.setVisible(true);step();assert.equal(scene.presentationAngle,angle);assert.equal(scene.rpm,rpm);assert.equal(node.dataset.frameDt,'0.000000');assert.equal(node.dataset.frameRawDt,'0.000000');
+ step();assert.ok(scene.presentationAngle>angle);assert.equal(node.dataset.frameDt,'0.016000');scene.dispose();
+});
+check('页面visibilitychange独立重置RAF基线，销毁移除监听',()=>{
+ const listeners=new Set(),oldAdd=document.addEventListener,oldRemove=document.removeEventListener;
+ document.addEventListener=(type,callback)=>{if(type==='visibilitychange')listeners.add(callback);};document.removeEventListener=(type,callback)=>{if(type==='visibilitychange')listeners.delete(callback);};
+ const node=canvas(),scene=createStudio(node,{animatedPreview:true});
+ try{step();step();const angle=scene.presentationAngle;assert.equal(listeners.size,1);for(const reset of listeners)reset();step(60000);assert.equal(scene.presentationAngle,angle);assert.equal(node.dataset.frameDt,'0.000000');step();assert.ok(scene.presentationAngle>angle);}
+ finally{scene.dispose();document.addEventListener=oldAdd;document.removeEventListener=oldRemove;}
+ assert.equal(listeners.size,0);
 });
 console.log(`RESULT ${total}/${total}`);
