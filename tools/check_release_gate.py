@@ -9,7 +9,7 @@ scope = sys.argv[1] if len(sys.argv) > 1 else 'all'
 if scope not in ('web', 'film', 'all'):
     raise SystemExit('Use: python3 tools/check_release_gate.py [web|film|all]')
 targets = {'web': root / 'Wheel-and-Clay.html',
-           'film': root / 'qa' / 'film-v5' / 'Wheel-and-Clay-Motion-V5.mp4'}
+           'film': root / 'media' / 'wheel-and-clay-intro.mp4'}
 required = list(targets) if scope == 'all' else [scope]
 errors = []
 for reviewer in ('visual', 'motion'):

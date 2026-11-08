@@ -1,3 +1,4 @@
+import {buildPieceUrl,cleanPieceRecord} from './piece-link.js';
 import {getCompanion} from './companions.js';
 /* 分享只交给用户确认：不上传图片，不调用 X 发帖接口，也不读取当前位置或账号。 */
 export const SHARE_URL='https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/';
@@ -14,7 +15,8 @@ const shareWords={
  sharing:['正在打开分享…','Opening share…'],shared:['已交给系统分享，请在所选应用中确认。','Handed to your device. Confirm in the app you choose.'],
  unavailable:['图片暂不可用，请重新打开这件作品。','The card is unavailable. Please open this piece again.'],
  failed:['系统分享暂不可用；仍可下载作品卡并打开 X。','Device sharing is unavailable. You can still download the card and open X.'],
- caption:['分享文案','Share caption']
+ caption:['分享文案','Share caption'],
+ link:['复制作品链接 ↗','Copy piece link ↗'],linkCopied:['作品链接已复制','Piece link copied'],linkHint:['打开链接，即可旋转查看这件陶器。','Open the link to explore this piece in 3D.'],linkFallback:['请选中下方链接并复制。','Select and copy the link below.'],linkLabel:['作品链接','Piece link']
 };
 const shareLang=lang=>lang==='en'?'en':'zh';
 
@@ -30,7 +32,7 @@ export function buildShareCopy(record={},lang='zh'){
 }
 export function buildXIntent(record={},lang='zh'){
  const url=new URL('https://x.com/intent/tweet');
- url.searchParams.set('text',buildShareCopy(record,lang));url.searchParams.set('url',SHARE_URL);
+ url.searchParams.set('text',buildShareCopy(record,lang));url.searchParams.set('url',buildPieceUrl(record,lang));
  return url.toString();
 }
 export function shareFileName(record={}){
@@ -63,26 +65,28 @@ export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
  let piece=null,file=null,objectUrl=null,busy='',nativeSupported=false,copySupported=false,copied=false,status='',disposed=false,revision=0;
  const heading=doc.createElement('h3'),actions=doc.createElement('div'),download=doc.createElement('a'),x=doc.createElement('a'),native=doc.createElement('button'),copy=doc.createElement('button'),instruction=doc.createElement('p'),feedback=doc.createElement('p');
  heading.className='share-title';actions.className='share-actions';download.className='share-download';x.className='share-x';native.className='share-native';copy.className='share-copy';instruction.className='share-instruction';feedback.className='share-feedback';
+ const link=doc.createElement('button'),linkRow=doc.createElement('div'),linkHint=doc.createElement('p'),fallback=doc.createElement('input');link.type='button';link.className='share-piece-link';linkRow.className='share-link-row';linkHint.className='share-link-hint';fallback.className='share-link-fallback';fallback.type='text';fallback.readOnly=true;fallback.hidden=true;linkRow.append(link,linkHint,fallback);
  x.target='_blank';x.rel='noopener noreferrer';native.type=copy.type='button';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
- root.classList.add('share-tools');root.replaceChildren(heading,actions,instruction,feedback);actions.append(native,copy,x,download);
+ root.classList.add('share-tools');root.replaceChildren(heading,linkRow,actions,instruction,feedback);actions.append(native,copy,x,download);
  function updateStatus(key,announce=false){status=key;render();if(announce)notify(label(key));}
  function release(){if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=null;file=null;nativeSupported=copySupported=false;}
  function render(){
   if(disposed)return;
-  heading.textContent=label('title');download.textContent=label('download');x.textContent=label(copied?'xCopied':'x');native.textContent=label(busy==='native'?'sharing':'native');copy.textContent=label(busy==='copy'?'copying':'copy');
+  heading.textContent=label('title');link.textContent=label(busy==='link'?'copying':status==='linkCopied'?'linkCopied':'link');linkHint.textContent=label('linkHint');fallback.setAttribute('aria-label',label('linkLabel'));link.disabled=!piece?.link;link.setAttribute('aria-busy',String(busy==='link'));linkRow.hidden=!piece?.link;download.textContent=label('download');x.textContent=label(copied?'xCopied':'x');native.textContent=label(busy==='native'?'sharing':'native');copy.textContent=label(busy==='copy'?'copying':'copy');
   instruction.textContent=label(nativeSupported?'nativeHint':copySupported?'instruction':'downloadInstruction');feedback.textContent=status?label(status):'';feedback.hidden=!status;
   root.dataset.shareReady=String(!!file);root.dataset.nativeShare=String(nativeSupported);root.dataset.copyShare=String(copySupported);root.dataset.copied=String(copied);root.dataset.shareStatus=status;root.setAttribute('aria-label',label('title'));root.setAttribute('aria-busy',String(!!busy));
   for(const link of [download,x]){link.setAttribute('aria-disabled',String(!file||busy));link.tabIndex=file&&!busy?0:-1;}
   native.hidden=!nativeSupported;native.disabled=!!busy||!file;copy.hidden=!copySupported;copy.disabled=!!busy||!file;
-  if(file){download.href=objectUrl;download.download=file.name;x.href=buildXIntent(piece.record,language());}
+  if(file){download.href=objectUrl;download.download=file.name;x.href=buildXIntent(piece.record,language());fallback.value=piece.link?buildPieceUrl(piece.record,language()):'';}
   else{download.removeAttribute('href');x.removeAttribute('href');download.removeAttribute('download');}
  }
  function setPiece(next){
-  revision++;release();piece=null;status='';busy='';copied=false;
+  revision++;release();piece=null;status='';busy='';copied=false;fallback.hidden=true;
   try{
    if(!next?.record)throw new TypeError('Missing piece');
-   const record={companionId:getCompanion(next.record.companionId)?.id||null,hadSim:next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null};
-   file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record,dataUrl:next.dataUrl};
+   const geometry=cleanPieceRecord(next.record);
+   const record={...geometry,companionId:getCompanion(next.record.companionId)?.id||null,hadSim:next.record.hadSim,order:next.record.order?{hadSim:next.record.order.hadSim,play:next.record.order.play,score:next.record.order.score}:null};
+   file=new File([pngBytes(next.dataUrl)],shareFileName(record),{type:'image/png'});objectUrl=URL.createObjectURL(file);piece={record,dataUrl:next.dataUrl,link:!!geometry};
    try{nativeSupported=typeof nav.share==='function'&&typeof nav.canShare==='function'&&nav.canShare({files:[file]});}catch{nativeSupported=false;}
    try{copySupported=typeof nav.clipboard?.write==='function'&&typeof view.ClipboardItem==='function'&&(typeof view.ClipboardItem.supports!=='function'||view.ClipboardItem.supports('image/png'));}catch{copySupported=false;}
   }catch{release();status='unavailable';}
@@ -99,15 +103,21 @@ export function createShareControls({root,lang=()=> 'zh',notify=()=>{}}={}){
  }
  async function nativeClick(){
   if(!file||busy||!nativeSupported)return;
-  const payload={files:[file],title:language()==='en'?'My Wheel & Clay piece':'我的轮间作品',text:buildShareCopy(piece.record,language()),url:SHARE_URL};
+  const payload={files:[file],title:language()==='en'?'My Wheel & Clay piece':'我的轮间作品',text:buildShareCopy(piece.record,language()),url:buildPieceUrl(piece.record,language())};
   const current=revision;busy='native';status='';render();
   try{await nav.share(payload);if(!disposed&&current===revision)updateStatus('shared');}
   catch(error){if(!disposed&&current===revision&&error?.name!=='AbortError')updateStatus('failed');}
   finally{if(current===revision){busy='';if(!disposed)render();}}
  }
+ async function linkClick(){
+  if(!piece?.link||busy)return;const current=revision;busy='link';status='';render();
+  try{if(typeof nav.clipboard?.writeText!=='function')throw new Error('Clipboard unavailable');await nav.clipboard.writeText(buildPieceUrl(piece.record,language()));if(!disposed&&current===revision){fallback.hidden=true;updateStatus('linkCopied');}}
+  catch{if(!disposed&&current===revision){fallback.hidden=false;updateStatus('linkFallback');fallback.focus();fallback.select();}}
+  finally{if(current===revision){busy='';if(!disposed)render();}}
+ }
  // 关闭作品卡后，旧的权限/系统分享结果不能写回下一次打开的卡片。
  function invalidatePending(){revision++;busy='';status='';copied=false;render();}
- download.addEventListener('click',downloadClick);x.addEventListener('click',xClick);native.addEventListener('click',nativeClick);copy.addEventListener('click',copyClick);dialog?.addEventListener('close',invalidatePending);
+ link.addEventListener('click',linkClick);download.addEventListener('click',downloadClick);x.addEventListener('click',xClick);native.addEventListener('click',nativeClick);copy.addEventListener('click',copyClick);dialog?.addEventListener('close',invalidatePending);
  render();
- return {setPiece,render,clear(){revision++;release();piece=null;status='';busy='';copied=false;render();},dispose(){disposed=true;revision++;release();download.removeEventListener('click',downloadClick);x.removeEventListener('click',xClick);native.removeEventListener('click',nativeClick);copy.removeEventListener('click',copyClick);dialog?.removeEventListener('close',invalidatePending);}};
+ return {setPiece,render,clear(){revision++;release();piece=null;status='';busy='';copied=false;render();},dispose(){disposed=true;revision++;release();link.removeEventListener('click',linkClick);download.removeEventListener('click',downloadClick);x.removeEventListener('click',xClick);native.removeEventListener('click',nativeClick);copy.removeEventListener('click',copyClick);dialog?.removeEventListener('close',invalidatePending);}};
 }

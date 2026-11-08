@@ -20,3 +20,16 @@
 .share-tools[data-share-status=copyFailed] .share-feedback,.share-tools[data-share-status=failed] .share-feedback{border-left-color:#aa875b;background:#e8e0cd80;color:#745d3c}
 @media(max-width:400px){.share-tools .share-title{font-size:17px}.share-actions{gap:7px}.share-actions>a,.share-actions>button{font-size:10px;padding:11px 7px}.share-tools .share-instruction,.share-tools .share-feedback{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.share-actions>a,.share-actions>button{transition:none}.share-actions>a:active,.share-actions>button:active{transform:none}}
+/* 专属作品链接是主操作；图片与社交出口留在下方，避免抢夺层级。 */
+.share-link-row{margin:0 0 14px}.share-link-row[hidden]{display:none}
+.share-piece-link{display:flex;align-items:center;justify-content:center;width:100%;min-height:46px;border:1px solid var(--green);border-radius:4px;background:#f5d476;color:#252317;font:600 12px var(--sans);cursor:pointer;transition:background .18s,transform .18s}
+.share-piece-link:hover{background:#ffe39a}.share-piece-link:active{transform:translateY(1px)}.share-piece-link:disabled{opacity:.55;cursor:wait}
+.share-tools .share-link-hint{font:10px/1.6 var(--sans);color:#a5aaa0;text-align:center;margin:8px 0 0}
+.share-link-fallback{display:block;width:100%;margin-top:9px;padding:9px;border:1px solid #9aab92;background:#202329;color:#e8dfc4;font:10px/1.4 var(--mono);border-radius:3px}.share-link-fallback[hidden]{display:none}
+.share-tools:has(.share-link-row:not([hidden])) .share-copy,.share-tools:has(.share-link-row:not([hidden])) .share-x,.share-tools:has(.share-link-row:not([hidden])) .share-native{background:#23262a;border-color:#494c48;color:#d2d0c2}
+@media(prefers-reduced-motion:reduce){.share-piece-link{transition:none}.share-piece-link:active{transform:none}}
+
+.share-tools:has(.share-link-row:not([hidden])) .share-actions button:hover,.share-tools:has(.share-link-row:not([hidden])) .share-x:hover{background:#30342f;color:#f2e9d6;border-color:#7b806c}
+.saved-dialog:has(.share-link-row:not([hidden])) #open-collection{background:transparent;color:#d9c28b;border-color:#5d594b}
+
+.share-tools[data-share-status=linkCopied] .share-feedback{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}

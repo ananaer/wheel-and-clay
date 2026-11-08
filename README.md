@@ -67,6 +67,7 @@ node tests/test_power_buffer.cjs
 node tests/test_glazes.mjs
 node tests/test_audio_activity.mjs
 node tests/test_share.mjs
+node tests/test_piece_link.mjs
 node tests/test_companions.mjs
 node tests/test_preview_rendering.mjs
 node tests/test_motion.mjs
@@ -105,7 +106,7 @@ python3 build.py
 
 首页制作演示只同步配色，与当前作品几何和挑战预算隔离。陶器和官方仓鼠都离开扣除固定导航后的可视区域时，首页动画暂停；工作台离屏、被对话框遮挡或页面进入后台时暂停加工与挑战计数。
 
-收藏后可下载 1200×1500 作品卡，包含器物、所选配色伙伴、Sepolia 样例标识、模拟／实时来源和成绩（如有），并打开带文案与正式试玩链接的 X 入口。旧作品不会补造未记录的角色身份。桌面浏览器需要用户手动附上 PNG 并确认发布；支持文件分享的设备提供系统分享按钮。不自动上传、不读取账号、不代发。
+收藏后可下载 1200×1500 作品卡，包含器物、所选配色伙伴、Sepolia 样例标识、模拟／实时来源和成绩（如有），并打开带文案与专属作品链接的 X 入口（缺少有效器形的旧记录保留试玩链接）。旧作品不会补造未记录的角色身份。桌面浏览器需要用户手动附上 PNG 并确认发布；支持文件分享的设备提供系统分享按钮。不自动上传、不读取账号、不代发。
 
 ## 连续运动验收
 
@@ -116,3 +117,9 @@ python3 build.py
 固定目标 60Hz；预热 1.5 秒后每场景至少 600 个样本、10 秒才可判定。p95 ≤25ms、p99 ≤33.34ms、迟到帧 ≤1%，可见 >50ms 卡顿必须排查。场景不可见的时间单独报告；不得通过反复重置预热或截断物理 dt 隐藏长帧。滚动时某个场景短暂可见、样本不足，就保留“证据不足”，页面采样通过也不代表该场景通过。帧间隔是浏览器调度证据，仍需人工观看连续画面。原始 JSON 位于面板“完整原始报告”，保存到 `qa/integration/`。
 
 运动验收还必须记录实际 `presentationAngle`、`frameSerial`、`frameNow`、`frameDt` 和 `frameRawDt`，逐帧检查角速度、倒转及工序交接。帧率正常也可能因时间被挤到某一帧而忽快忽慢。首页对正只向前滑行减速，扫描后缓慢恢复；重播继承当前转角与速度。场景统一按 RAF 时间差积分，离屏和恢复首帧不追补后台时间。测试中的受控时钟与渲染器只能证明逻辑，不能替代真实浏览器完整制作、暂停恢复和重播记录。
+
+### Share a piece
+
+Keep a finished piece, then choose **Copy piece link**. The link opens a read-only 3D view of that exact profile and glaze. It carries a compact, validated design in the URL fragment; no server upload, wallet or account is needed. Opening it does not replace the viewer's work or add to their collection. X and device sharing also use this piece link; attaching the image still needs the sharing app's support or a manual paste.
+
+The shared source label is maker-supplied, not a verified hardware or ownership claim. Scores and local identifiers are omitted. If an older saved record has no usable geometry, sharing falls back to the public play link.
