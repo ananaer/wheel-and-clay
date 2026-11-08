@@ -2700,7 +2700,7 @@ function createHome({root,lang=()=> 'zh',createStudio,onEnter=()=>{},onModeChang
 
 // 链接只携带器形与工艺，不携带本机ID、图片、成绩、账号或硬件证明。
 // 二进制白名单避免自由文本/HTML，固定长度在解码前限制输入。
-const PIECE_SITE='https://wheel-and-clay.duckdns.org/';
+const PIECE_SITE='https://wheel-and-clay.shop/';
 const PIECE_FORMS=['vase','column','bowl'],PIECE_COMPANIONS=[null,'8889','8890','8891'];
 const PIECE_COUNT=129,PIECE_BYTES=270,PIECE_PAYLOAD_LENGTH=360;
 function cleanPieceRecord(record){
@@ -2789,7 +2789,7 @@ function createPieceView({root,lang=()=> 'en',createStudio,onMakeYours}={}){
 
 
 /* 分享只交给用户确认：不上传图片，不调用 X 发帖接口，也不读取当前位置或账号。 */
-const SHARE_URL='https://wheel-and-clay.duckdns.org/';
+const SHARE_URL='https://wheel-and-clay.shop/';
 const shareWords={
  title:['分享这件作品','Share your piece'],
  download:['下载作品卡','Download card'],x:['打开 X ↗','Open X ↗'],xCopied:['打开 X 并粘贴 ↗','Open X & paste ↗'],native:['带图分享…','Share with image…'],copy:['复制作品图','Copy image'],copying:['正在复制…','Copying…'],
