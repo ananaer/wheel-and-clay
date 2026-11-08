@@ -10,3 +10,9 @@
 音乐来自项目原创 Wood & Light，另配原创细绳、落脚和轻点击音效。品牌素材来源见[BRAND-ASSETS.md](../BRAND-ASSETS.md)。视频不代表 Squeekchain 官方出品、背书或审批通过。
 
 [公开试玩](https://wheel-and-clay.shop/)
+
+## Genesis 点阵提交封面
+
+[下载专用提交封面 PNG](wheel-and-clay-led-cover.png)（1672×941，约834 KiB）。用于 Genesis 的 Replace picture，突出 WHEEL & CLAY、大陶器与仓鼠轮廓，经过64×36、5级亮度的本地同规则点阵预览及独立审核。上传原图，勿上传已经处理成点阵的预览。
+
+这张是内置 imagegen 根据本项目陶器与公开官方仓鼠物料制作的宣传插画，不是网页截图或新的官方标志。官网会根据账户采用自己的点阵色板；本地预览使用截图对应的绿色，未模拟鼠标照明与扫描入场。
