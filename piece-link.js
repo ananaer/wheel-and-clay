@@ -3,7 +3,7 @@ import {getCompanion} from './companions.js';
 
 // 链接只携带器形与工艺，不携带本机ID、图片、成绩、账号或硬件证明。
 // 二进制白名单避免自由文本/HTML，固定长度在解码前限制输入。
-export const PIECE_SITE='https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/';
+export const PIECE_SITE='https://wheel-and-clay.duckdns.org/';
 const PIECE_FORMS=['vase','column','bowl'],PIECE_COMPANIONS=[null,'8889','8890','8891'];
 const PIECE_COUNT=129,PIECE_BYTES=270,PIECE_PAYLOAD_LENGTH=360;
 export function cleanPieceRecord(record){

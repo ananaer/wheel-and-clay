@@ -1,7 +1,7 @@
 import {buildPieceUrl,cleanPieceRecord} from './piece-link.js';
 import {getCompanion} from './companions.js';
 /* 分享只交给用户确认：不上传图片，不调用 X 发帖接口，也不读取当前位置或账号。 */
-export const SHARE_URL='https://wheel-and-clay.blackhaven-phase1-dashboard.workers.dev/';
+export const SHARE_URL='https://wheel-and-clay.duckdns.org/';
 const shareWords={
  title:['分享这件作品','Share your piece'],
  download:['下载作品卡','Download card'],x:['打开 X ↗','Open X ↗'],xCopied:['打开 X 并粘贴 ↗','Open X & paste ↗'],native:['带图分享…','Share with image…'],copy:['复制作品图','Copy image'],copying:['正在复制…','Copying…'],
