@@ -1,0 +1,26 @@
+.power-link{position:relative;min-width:0;color:#b4b5a8}
+.power-link-trigger{display:flex;align-items:center;gap:17px;width:100%;padding:2px 9px 4px 0;text-align:left;border:0;border-radius:6px;background:transparent;color:inherit;cursor:pointer;transition:background .2s,color .2s}
+.power-link-trigger:hover,.power-link-trigger[aria-expanded=true]{background:#d7c69b08;color:#f1e6ca}
+.power-link-trigger:focus-visible{outline:1px solid #c8b98d;outline-offset:5px}
+.power-mechanism{position:relative;display:block;width:190px;height:65px;flex:none}
+.power-mechanism svg{width:190px;height:65px;display:block;overflow:visible}
+.power-belt{stroke:#7d806e;stroke-width:.65;opacity:.38}
+.power-flow{stroke:#d7b66e;stroke-width:1.1;stroke-dasharray:2 48;opacity:.7}
+.power-link-legend{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:space-between;padding:0 4px 0 8px;font-size:8px;letter-spacing:.02em;color:#b2b3a4}
+.power-link-legend>span:last-child{font-size:7px;letter-spacing:.13em;color:#93aaa0}
+.power-link-copy{display:flex;align-items:center;gap:14px;font-size:10px;white-space:nowrap}
+.power-link-status{max-width:160px;color:#a7ae9f;font-size:10px;font-weight:400;letter-spacing:.01em}
+.power-link-hint{font-size:15px;color:#7f8c7b;transition:transform .2s,color .2s}
+.power-link-trigger:hover .power-link-hint{color:#e6cf95;transform:translate(1px,-1px)}
+.power-link[data-state=unknown] .power-mechanism{opacity:.38}.power-link[data-state=unknown] .power-flow,.power-link[data-state=idle] .power-flow{opacity:0}
+.power-link[data-state=buffering] .power-flow{stroke-dasharray:1 3;opacity:.25}.power-link[data-state=buffering] .power-link-status{color:#c7b383}
+.power-link-popover{position:absolute;left:-12px;bottom:calc(100% + 14px);width:300px;padding:23px 23px 20px;background:linear-gradient(135deg,#212626,#15191c);border:1px solid #555b4d;border-radius:12px;box-shadow:0 18px 65px #0009;z-index:15;text-align:left}
+.power-link-popover[hidden]{display:none}.power-link-popover:after{content:"";position:absolute;bottom:-5px;left:42px;width:8px;height:8px;background:#181c1e;border-bottom:1px solid #555b4d;border-right:1px solid #555b4d;transform:rotate(45deg)}
+.power-link-title{font-size:13px;font-weight:400;letter-spacing:-.01em;color:#e1dcc9;margin:0 0 18px}
+.power-link-facts{display:flex;align-items:center;justify-content:space-between;gap:16px}.power-link-facts>div{display:grid;grid-template-columns:auto auto;gap:6px;align-items:baseline}.power-link-facts>div>span{grid-column:1/-1;font-size:10px;color:#9ea89c}.power-link-facts strong{font:400 20px/1.2 ui-monospace,monospace!important;letter-spacing:-.04em;color:#e5d8b7;font-variant-numeric:tabular-nums}.power-link-facts>div:last-child strong{color:#bcd1c2}.power-link-facts small{font-size:8px;color:#919d90}.power-fact-arrow{font-size:18px;color:#667866}
+.power-link-popover .power-link-note,.power-link-popover .power-buffer-note{font-size:10px;line-height:1.7;color:#9ba798;margin:17px 0 0}.power-link-popover .power-buffer-note{color:#c2ae81;padding-top:12px;border-top:1px solid #ffffff12}
+.home-source-info{display:flex;align-items:center}.home-foot .power-link{width:355px}.home-foot .power-link-copy{gap:12px}.home-foot .power-link-trigger{padding-right:0}.home-foot .home-signal{display:none}
+.motor-card .power-link-trigger{display:block;padding:2px 0 0}.motor-card .power-mechanism{margin:auto}.motor-card .power-link-copy{justify-content:center;margin-top:13px}.motor-card .power-link-popover{left:0;bottom:calc(100% + 16px)}
+.motor-card .hamster-telemetry{display:block;margin-top:8px}.motor-card .motor-heading,.motor-card .source-row,.motor-card .power-effect{display:none}.motor-card .mode-switch{margin-top:17px}.motor-card{padding-top:12px!important;padding-bottom:12px!important}
+@media(max-width:1120px){.home-foot .power-link{width:300px}.home-foot .power-link-trigger{gap:8px}.home-foot .power-mechanism{width:170px}.home-foot .power-mechanism svg{width:170px}.home-foot .power-link-status{font-size:9px}.home-foot .power-link-hint{display:none}}
+@media(prefers-reduced-motion:reduce){.power-link-trigger,.power-link-hint{transition:none}}
